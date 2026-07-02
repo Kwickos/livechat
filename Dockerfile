@@ -1,7 +1,9 @@
 # Image du serveur LiveChat (bot Discord + relais WebSocket),
 # prête pour AtlasFlow / Railway / tout hébergeur de conteneurs.
 
-FROM rust:1-slim AS build
+# bookworm explicite : le binaire doit être lié à la même version de GLIBC
+# que l'image d'exécution ci-dessous (sinon « GLIBC_2.xx not found »).
+FROM rust:1-slim-bookworm AS build
 WORKDIR /app
 COPY . .
 RUN cargo build --release --locked -p livechat-server
