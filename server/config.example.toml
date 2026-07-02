@@ -1,0 +1,19 @@
+# Copie ce fichier vers `config.toml` (à côté de l'exe ou dans le dossier
+# depuis lequel tu lances le serveur), puis remplis les valeurs.
+
+# Token du bot Discord.
+# https://discord.com/developers/applications > ton application > Bot > Reset Token
+discord_token = "COLLE_TON_TOKEN_ICI"
+
+# ID du salon à écouter.
+# Discord > Paramètres > Avancés > activer le « Mode développeur »,
+# puis clic droit sur le salon > « Copier l'identifiant du salon ».
+channel_id = "123456789012345678"
+
+# Adresse/port d'écoute pour les overlays.
+# Pense à ouvrir/rediriger ce port sur ta box et ton pare-feu Windows.
+bind = "0.0.0.0:9000"
+
+# Mot de passe partagé : mets exactement la même valeur dans le config.toml
+# de l'overlay de chaque pote.
+secret = "change-moi"

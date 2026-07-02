@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Capacité par défaut de la fenêtre overlay",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

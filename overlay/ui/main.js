@@ -1,0 +1,217 @@
+// UI de l'overlay : file d'attente des médias reçus, affichage un par un
+// avec fondu, indicateur de connexion.
+
+// Hors Tauri (aperçu dans un navigateur), on bascule en mode démo.
+const tauriApi = window.__TAURI__ || null;
+const listen = tauriApi ? tauriApi.event.listen : async () => {};
+const invoke = tauriApi
+  ? tauriApi.core.invoke
+  : async () => {
+      throw new Error("hors Tauri");
+    };
+
+const stage = document.getElementById("stage");
+const box = document.getElementById("media-box");
+const img = document.getElementById("img");
+const video = document.getElementById("video");
+const senderEl = document.getElementById("sender");
+const captionEl = document.getElementById("caption");
+const statusEl = document.getElementById("status");
+
+let config = {
+  display_seconds: 8,
+  max_video_seconds: 60,
+  volume: 0.5,
+  position: "center",
+  max_size_percent: 45,
+};
+
+const MAX_QUEUE = 20;
+const LOAD_TIMEOUT_MS = 15000;
+
+const queue = [];
+let busy = false;
+let finishing = false;
+let hideTimer = null;
+let guardTimer = null;
+let statusTimer = null;
+
+async function init() {
+  // Les écouteurs d'abord : un événement émis pendant l'invoke serait perdu.
+  await listen("media", (e) => enqueue(e.payload));
+  await listen("status", (e) => onStatus(e.payload));
+
+  let startup = null;
+  try {
+    const ui = await invoke("get_config");
+    config = Object.assign(config, ui);
+    if (ui.startup_state) {
+      startup = { state: ui.startup_state, detail: ui.startup_detail };
+    }
+  } catch (_) {
+    // valeurs par défaut
+  }
+
+  const pct = Math.min(Math.max(config.max_size_percent, 10), 95);
+  document.documentElement.style.setProperty("--max-w", pct + "vw");
+  document.documentElement.style.setProperty("--max-h", pct + "vh");
+
+  const positions = ["center", "top-left", "top-right", "bottom-left", "bottom-right"];
+  const pos = positions.includes(config.position) ? config.position : "center";
+  stage.className = "pos-" + pos;
+
+  // L'état de démarrage est tiré (pas poussé) : impossible de le rater.
+  if (startup) onStatus(startup);
+
+  if (!tauriApi) demo();
+}
+
+// Aperçu navigateur : affiche un média factice en boucle.
+function demo() {
+  document.body.style.background = "#2b2d31";
+  const svg =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='520' height='300'>" +
+    "<rect width='100%' height='100%' rx='24' fill='%235865F2'/>" +
+    "<text x='50%' y='42%' font-family='Segoe UI' font-size='44' font-weight='bold' fill='white' text-anchor='middle'>LiveChat</text>" +
+    "<text x='50%' y='66%' font-family='Segoe UI' font-size='26' fill='white' text-anchor='middle'>Mode aperçu</text></svg>";
+  const item = {
+    type: "media",
+    kind: "image",
+    url: "data:image/svg+xml," + svg,
+    sender: "Démo",
+    caption: "Un exemple de légende",
+  };
+  showStatus("🟢 Mode aperçu (hors Tauri)", 4000);
+  enqueue(item);
+  setInterval(() => enqueue(item), 12000);
+}
+
+function enqueue(item) {
+  if (!item || item.type !== "media" || !item.url) return;
+  if (queue.length >= MAX_QUEUE) queue.shift(); // anti-spam : on jette le plus vieux
+  queue.push(item);
+  pump();
+}
+
+function pump() {
+  if (busy) return;
+  const item = queue.shift();
+  if (!item) return;
+  busy = true;
+  show(item);
+}
+
+function show(item) {
+  clearTimeout(hideTimer); // aucun minuteur orphelin d'un média précédent
+  senderEl.textContent = item.sender || "";
+  const caption = (item.caption || "").trim();
+  const showCaption = caption && !caption.startsWith("http");
+  captionEl.textContent = showCaption ? caption : "";
+  captionEl.classList.toggle("hidden", !showCaption);
+
+  // garde-fou : si le média ne charge jamais (URL expirée…), on passe au suivant
+  clearTimeout(guardTimer);
+  guardTimer = setTimeout(finish, LOAD_TIMEOUT_MS);
+
+  if (item.kind === "video") {
+    img.classList.add("hidden");
+    video.classList.remove("hidden");
+    video.volume = Math.min(Math.max(config.volume, 0), 1);
+    video.muted = config.volume <= 0;
+    video.onerror = finish;
+    video.onended = finish;
+    video.onloadeddata = () => {
+      reveal();
+      armHide(config.max_video_seconds);
+      video.play().catch(() => {
+        // l'autoplay avec son a pu être bloqué : on retente en muet
+        video.muted = true;
+        video.play().catch(finish);
+      });
+    };
+    video.src = item.url;
+  } else {
+    video.classList.add("hidden");
+    img.classList.remove("hidden");
+    img.onerror = finish;
+    img.onload = () => {
+      reveal();
+      armHide(config.display_seconds);
+    };
+    img.src = item.url;
+  }
+}
+
+function reveal() {
+  clearTimeout(guardTimer);
+  box.classList.add("visible");
+}
+
+function armHide(seconds) {
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(finish, Math.max(seconds, 1) * 1000);
+}
+
+function finish() {
+  if (finishing) return; // onended + timer peuvent arriver en double
+  finishing = true;
+  clearTimeout(hideTimer);
+  clearTimeout(guardTimer);
+  // Détache les handlers tout de suite : un chargement qui aboutit pendant
+  // le fondu de sortie ne doit pas réafficher la boîte ni relancer la vidéo.
+  video.onerror = video.onended = video.onloadeddata = null;
+  img.onerror = img.onload = null;
+  box.classList.remove("visible");
+  setTimeout(() => {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    img.removeAttribute("src");
+    finishing = false;
+    busy = false;
+    pump();
+  }, 300);
+}
+
+let stickyUntil = 0;
+
+function onStatus(s) {
+  if (!s || !s.state) return;
+
+  // Messages de configuration : prioritaires et durables.
+  const configMessages = {
+    "config-created": (d) =>
+      "⚙️ config.toml créé (" + d + ") : renseigne « server » et « secret », puis relance l'overlay.",
+    "config-create-failed": (d) =>
+      "⚠️ Impossible de créer config.toml (" + d + ") — déplace l'exe dans un dossier accessible en écriture.",
+    "config-invalid": (d) =>
+      "⚙️ config.toml invalide (" + d + ") — corrige le fichier puis relance l'overlay.",
+  };
+  if (configMessages[s.state]) {
+    stickyUntil = Date.now() + 45000;
+    showStatus(configMessages[s.state](s.detail || "?"), 7200000);
+    return;
+  }
+  // Ne pas écraser un message de configuration avec un statut de connexion.
+  if (Date.now() < stickyUntil) return;
+
+  const messages = {
+    "connecting": "Connexion au serveur…",
+    "connected": "🟢 Connecté",
+    "disconnected": "🔴 Déconnecté — reconnexion…",
+  };
+  let text = messages[s.state] || s.state;
+  if (s.state === "error") {
+    text = "🔴 Connexion impossible : " + (s.detail || "erreur inconnue");
+  }
+  showStatus(text, s.state === "connected" ? 2500 : 8000);
+}
+
+function showStatus(text, ms) {
+  statusEl.textContent = text;
+  statusEl.classList.add("visible");
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => statusEl.classList.remove("visible"), ms);
+}
+
+init();

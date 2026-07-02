@@ -1,0 +1,21 @@
+[package]
+name = "livechat-overlay"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# custom-protocol : embarque l'UI dans le binaire, permet de compiler avec
+# cargo directement, sans le CLI tauri.
+tauri = { version = "2", features = ["tray-icon", "custom-protocol"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time"] }
+# rustls-tls-webpki-roots : permet le wss:// (serveur hébergé derrière TLS,
+# ex. AtlasFlow) avec des certificats racine embarqués.
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+toml = "0.8"
+percent-encoding = "2"
