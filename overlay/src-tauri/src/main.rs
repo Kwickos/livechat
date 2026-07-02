@@ -242,6 +242,11 @@ async fn ws_task(app: AppHandle, config: Config, initial_delay: Duration) {
 }
 
 fn main() {
+    // rustls 0.23 exige qu'un fournisseur crypto soit installé avant toute
+    // connexion TLS ; sans ça, la connexion wss:// panique dans la tâche de
+    // fond et l'overlay ne se connecte jamais (sans message d'erreur clair).
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let (config, status) = load_config();
     let state = ui_state(&config, &status);
 
