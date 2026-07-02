@@ -14,6 +14,9 @@ const stage = document.getElementById("stage");
 const box = document.getElementById("media-box");
 const img = document.getElementById("img");
 const video = document.getElementById("video");
+const audio = document.getElementById("audio");
+const audioCard = document.getElementById("audio-card");
+const audioName = document.getElementById("audio-name");
 const senderEl = document.getElementById("sender");
 const captionEl = document.getElementById("caption");
 const statusEl = document.getElementById("status");
@@ -113,8 +116,11 @@ function show(item) {
   clearTimeout(guardTimer);
   guardTimer = setTimeout(finish, LOAD_TIMEOUT_MS);
 
+  img.classList.add("hidden");
+  video.classList.add("hidden");
+  audioCard.classList.add("hidden");
+
   if (item.kind === "video") {
-    img.classList.add("hidden");
     video.classList.remove("hidden");
     video.volume = Math.min(Math.max(config.volume, 0), 1);
     video.muted = config.volume <= 0;
@@ -130,8 +136,24 @@ function show(item) {
       });
     };
     video.src = item.url;
+  } else if (item.kind === "audio") {
+    audioCard.classList.remove("hidden");
+    audioName.textContent = item.filename || "🔊 Son";
+    audio.volume = Math.min(Math.max(config.volume, 0), 1);
+    audio.muted = config.volume <= 0;
+    audio.onerror = finish;
+    audio.onended = finish;
+    audio.onloadeddata = () => {
+      reveal();
+      armHide(config.max_video_seconds);
+      audio.play().catch(() => {
+        // en cas de blocage autoplay, on laisse au moins la carte visible
+        audio.muted = true;
+        audio.play().catch(finish);
+      });
+    };
+    audio.src = item.url;
   } else {
-    video.classList.add("hidden");
     img.classList.remove("hidden");
     img.onerror = finish;
     img.onload = () => {
@@ -160,12 +182,16 @@ function finish() {
   // Détache les handlers tout de suite : un chargement qui aboutit pendant
   // le fondu de sortie ne doit pas réafficher la boîte ni relancer la vidéo.
   video.onerror = video.onended = video.onloadeddata = null;
+  audio.onerror = audio.onended = audio.onloadeddata = null;
   img.onerror = img.onload = null;
   box.classList.remove("visible");
   setTimeout(() => {
     video.pause();
     video.removeAttribute("src");
     video.load();
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
     img.removeAttribute("src");
     finishing = false;
     busy = false;

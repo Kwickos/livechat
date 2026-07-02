@@ -124,7 +124,7 @@ Puis `cargo build --release` à la racine compile les deux programmes.
 
 - **Plein écran exclusif** : l'overlay s'affiche par-dessus les jeux en *fenêtré sans bordure* (borderless) — le mode par défaut de la plupart des jeux récents — mais **pas** en *plein écran exclusif*. C'est une limite de Windows (même l'overlay Discord officiel ne le fait qu'en s'injectant dans le jeu). Si l'overlay n'apparaît pas : passe le jeu en « Fenêtré sans bordure ».
 - **Liens Discord temporaires** : les URLs des pièces jointes Discord expirent après ~24 h. Aucun impact en direct (les overlays affichent le média à la seconde où il est posté), mais un overlay lancé plus tard ne « rattrape » pas les anciens médias.
-- **Types supportés** : images (png, jpg, webp, gif, bmp, avif) et vidéos (mp4, webm, mov, m4v), en pièce jointe ou en lien direct `https://` collé dans le message (les liens `http://` sont ignorés) ; **liens YouTube** si `PUBLIC_URL` est défini (voir plus haut). Les GIF Tenor/Giphy intégrés (choisis via le sélecteur GIF de Discord) ne sont pas encore gérés.
+- **Types supportés** : images (png, jpg, webp, gif, bmp, avif), vidéos (mp4, webm, mov, m4v) et sons (mp3, wav, ogg, m4a, flac, opus — affichés avec une petite carte animée), en pièce jointe ou en lien direct `https://` collé dans le message (les liens `http://` sont ignorés) ; **liens YouTube** si `PUBLIC_URL` est défini (voir plus haut). Les GIF Tenor/Giphy intégrés (choisis via le sélecteur GIF de Discord) ne sont pas encore gérés.
 - **Sécurité** : la connexion est en `ws://` (non chiffrée) avec un mot de passe partagé — suffisant entre potes. Pour du chiffrement, mets un reverse proxy TLS (Caddy, nginx) devant le serveur et utilise `wss://`.
 
 ## Dépannage

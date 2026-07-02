@@ -82,6 +82,7 @@ struct MediaEvent<'a> {
 
 const IMAGE_EXT: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "avif"];
 const VIDEO_EXT: &[&str] = &["mp4", "webm", "mov", "m4v"];
+const AUDIO_EXT: &[&str] = &["mp3", "wav", "ogg", "oga", "m4a", "flac", "opus", "weba", "aac"];
 
 fn kind_from_extension(name: &str) -> Option<&'static str> {
     let lower = name.to_ascii_lowercase();
@@ -92,6 +93,8 @@ fn kind_from_extension(name: &str) -> Option<&'static str> {
         Some("image")
     } else if VIDEO_EXT.contains(&ext) {
         Some("video")
+    } else if AUDIO_EXT.contains(&ext) {
+        Some("audio")
     } else {
         None
     }
@@ -108,6 +111,9 @@ fn kind_from_attachment(content_type: Option<&str>, filename: &str) -> Option<&'
         }
         if ct.starts_with("video/") {
             return Some("video");
+        }
+        if ct.starts_with("audio/") {
+            return Some("audio");
         }
     }
     kind_from_extension(filename)
