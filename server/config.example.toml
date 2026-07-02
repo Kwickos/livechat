@@ -17,3 +17,9 @@ bind = "0.0.0.0:9000"
 # Mot de passe partagé : mets exactement la même valeur dans le config.toml
 # de l'overlay de chaque pote.
 secret = "change-moi"
+
+# (Optionnel) URL publique du serveur, pour activer les liens YouTube.
+# Les vidéos YouTube postées sont téléchargées puis servies depuis cette
+# adresse. Sur AtlasFlow, c'est l'URL du projet. Laisse en commentaire pour
+# désactiver YouTube.
+# public_url = "https://mon-projet.atlasflow.dev"

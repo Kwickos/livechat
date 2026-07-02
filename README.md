@@ -47,6 +47,7 @@ Deux programmes :
    | `DISCORD_TOKEN` | le token du bot |
    | `CHANNEL_ID` | l'ID du salon |
    | `SECRET` | le mot de passe partagé avec les overlays |
+   | `PUBLIC_URL` | *(optionnel)* l'URL du projet, ex. `https://ton-projet.atlasflow.dev` — active les liens YouTube (voir plus bas) |
 
 5. Crée le projet → le premier déploiement part tout seul. Vérifie dans les logs : `Bot Discord connecté en tant que …`.
 6. Récupère l'URL du projet (`https://ton-projet.atlasflow.dev`). Dans le `config.toml` des overlays :
@@ -100,6 +101,17 @@ Options du `config.toml` de l'overlay : durée d'affichage, volume des vidéos, 
 
 > L'overlay nécessite WebView2, préinstallé sur Windows 11 (et sur Windows 10 récent).
 
+## Liens YouTube (optionnel)
+
+Si tu définis `PUBLIC_URL` (variable d'env sur AtlasFlow, ou `public_url` dans le `config.toml` du serveur), le serveur **télécharge** les liens YouTube postés dans le salon (via `yt-dlp`, en ≤ 720p H.264) puis les rediffuse comme une vidéo normale — l'overlay les joue en autoplay, sans habillage YouTube. Rien à changer côté overlay.
+
+Le bot réagit au message : ⏳ pendant le téléchargement, 📺 quand c'est prêt, 🚫 en cas d'échec (vidéo > 30 min, > 150 Mo, ou indisponible).
+
+- **Sur AtlasFlow** : `yt-dlp` et `ffmpeg` sont installés automatiquement par le `Dockerfile`. Il suffit d'ajouter la variable `PUBLIC_URL = https://ton-projet.atlasflow.dev`.
+- **En local** : installe `yt-dlp` et `ffmpeg` (`winget install yt-dlp.yt-dlp Gyan.FFmpeg`), et mets `public_url = "http://TON_IP:9000"` dans le `config.toml`.
+- Ça consomme de la bande passante (chaque vidéo est renvoyée à chaque overlay) et du stockage temporaire (fichiers supprimés après 30 min). Pour une bande de potes, ça reste négligeable.
+- Télécharger des vidéos YouTube va à l'encontre des CGU de YouTube ; à n'utiliser qu'entre potes, à titre privé.
+
 ## Compiler depuis zéro
 
 Prérequis (Windows) :
@@ -112,7 +124,7 @@ Puis `cargo build --release` à la racine compile les deux programmes.
 
 - **Plein écran exclusif** : l'overlay s'affiche par-dessus les jeux en *fenêtré sans bordure* (borderless) — le mode par défaut de la plupart des jeux récents — mais **pas** en *plein écran exclusif*. C'est une limite de Windows (même l'overlay Discord officiel ne le fait qu'en s'injectant dans le jeu). Si l'overlay n'apparaît pas : passe le jeu en « Fenêtré sans bordure ».
 - **Liens Discord temporaires** : les URLs des pièces jointes Discord expirent après ~24 h. Aucun impact en direct (les overlays affichent le média à la seconde où il est posté), mais un overlay lancé plus tard ne « rattrape » pas les anciens médias.
-- **Types supportés** : images (png, jpg, webp, gif, bmp, avif) et vidéos (mp4, webm, mov, m4v), en pièce jointe ou en lien direct `https://` collé dans le message (les liens `http://` sont ignorés). Les GIF Tenor/Giphy intégrés (choisis via le sélecteur GIF de Discord) ne sont pas encore gérés.
+- **Types supportés** : images (png, jpg, webp, gif, bmp, avif) et vidéos (mp4, webm, mov, m4v), en pièce jointe ou en lien direct `https://` collé dans le message (les liens `http://` sont ignorés) ; **liens YouTube** si `PUBLIC_URL` est défini (voir plus haut). Les GIF Tenor/Giphy intégrés (choisis via le sélecteur GIF de Discord) ne sont pas encore gérés.
 - **Sécurité** : la connexion est en `ws://` (non chiffrée) avec un mot de passe partagé — suffisant entre potes. Pour du chiffrement, mets un reverse proxy TLS (Caddy, nginx) devant le serveur et utilise `wss://`.
 
 ## Dépannage

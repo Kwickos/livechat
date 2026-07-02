@@ -1,8 +1,10 @@
 //! livechat-server : bot Discord + relais WebSocket.
 //!
-//! Écoute un salon Discord ; chaque photo/vidéo postée (pièce jointe ou lien
-//! direct) est rediffusée en JSON à tous les overlays connectés en WebSocket.
+//! Écoute un salon Discord ; chaque photo/vidéo postée (pièce jointe, lien
+//! direct, ou lien YouTube téléchargé via yt-dlp) est rediffusée en JSON à
+//! tous les overlays connectés en WebSocket.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,11 +17,15 @@ use axum::routing::get;
 use axum::Router;
 use serde::{Deserialize, Deserializer, Serialize};
 use serenity::async_trait;
-use serenity::model::channel::Message;
+use serenity::http::Http;
+use serenity::model::channel::{Message, ReactionType};
 use serenity::model::gateway::Ready;
+use serenity::model::id::{ChannelId, MessageId};
 use serenity::prelude::*;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
+use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 /// Configuration lue depuis config.toml (à côté de l'exe ou du dossier courant).
 #[derive(Deserialize)]
@@ -34,6 +40,11 @@ struct Config {
     bind: String,
     /// Mot de passe partagé avec les overlays.
     secret: String,
+    /// URL publique du serveur (ex. https://mon-projet.atlasflow.dev).
+    /// Requise pour activer les liens YouTube : les vidéos téléchargées sont
+    /// servies à partir de cette adresse. Laissée vide = YouTube désactivé.
+    #[serde(default)]
+    public_url: Option<String>,
 }
 
 fn default_bind() -> String {
@@ -110,9 +121,144 @@ fn kind_from_url(url: &str) -> Option<&'static str> {
     kind_from_extension(last)
 }
 
+/// Vrai si le mot est un lien YouTube reconnu. Strict volontairement : on ne
+/// passe à yt-dlp que des URLs YouTube, jamais un lien arbitraire du salon.
+fn is_youtube_url(w: &str) -> bool {
+    const PREFIXES: &[&str] = &[
+        "https://www.youtube.com/watch",
+        "https://youtube.com/watch",
+        "https://m.youtube.com/watch",
+        "https://music.youtube.com/watch",
+        "https://www.youtube.com/shorts/",
+        "https://youtube.com/shorts/",
+        "https://m.youtube.com/shorts/",
+        "https://youtu.be/",
+    ];
+    PREFIXES.iter().any(|p| w.starts_with(p))
+}
+
+/// Télécharge les vidéos YouTube et les sert aux overlays.
+struct Downloader {
+    dir: PathBuf,
+    public_url: String,
+    sem: Arc<Semaphore>,
+    tx: broadcast::Sender<String>,
+}
+
+/// Durée de vie d'une vidéo téléchargée avant suppression automatique.
+const MEDIA_TTL: Duration = Duration::from_secs(30 * 60);
+
+impl Downloader {
+    async fn handle(
+        self: Arc<Self>,
+        http: Arc<Http>,
+        channel_id: ChannelId,
+        msg_id: MessageId,
+        url: String,
+        sender: String,
+    ) {
+        // Au plus quelques téléchargements simultanés : on protège la machine.
+        let _permit = match self.sem.clone().acquire_owned().await {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let hourglass = ReactionType::Unicode("⏳".to_string());
+        let _ = channel_id.create_reaction(&http, msg_id, hourglass).await;
+
+        let id = Uuid::new_v4().simple().to_string();
+        let template = self.dir.join(format!("{id}.%(ext)s"));
+
+        let ok = matches!(
+            tokio::time::timeout(Duration::from_secs(180), run_ytdlp(&url, &template)).await,
+            Ok(Ok(true))
+        );
+
+        let produced = if ok { find_output(&self.dir, &id) } else { None };
+        match produced {
+            Some(file) => {
+                let name = file
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let media_url = format!("{}/media/{}", self.public_url.trim_end_matches('/'), name);
+                let event = MediaEvent {
+                    r#type: "media",
+                    kind: "video",
+                    url: &media_url,
+                    filename: "",
+                    sender: &sender,
+                    caption: "",
+                };
+                if let Ok(json) = serde_json::to_string(&event) {
+                    let _ = self.tx.send(json);
+                }
+                info!("YouTube relayé : {url} -> {media_url}");
+                let tv = ReactionType::Unicode("📺".to_string());
+                let _ = channel_id.create_reaction(&http, msg_id, tv).await;
+
+                // Suppression différée.
+                tokio::spawn(async move {
+                    tokio::time::sleep(MEDIA_TTL).await;
+                    let _ = tokio::fs::remove_file(&file).await;
+                });
+            }
+            None => {
+                warn!("échec du téléchargement YouTube : {url}");
+                let cross = ReactionType::Unicode("🚫".to_string());
+                let _ = channel_id.create_reaction(&http, msg_id, cross).await;
+            }
+        }
+    }
+}
+
+/// Lance yt-dlp. Renvoie Ok(true) si le process se termine avec succès.
+async fn run_ytdlp(url: &str, out_template: &Path) -> std::io::Result<bool> {
+    // Priorité au H.264/AAC (lu de façon fiable par WebView2), <= 720p.
+    const FORMAT: &str = "best[ext=mp4][height<=720]/bestvideo[ext=mp4][vcodec^=avc1][height<=720]+bestaudio[ext=m4a]/best[height<=720]";
+
+    let status = tokio::process::Command::new("yt-dlp")
+        .arg("--no-playlist")
+        .arg("--no-cache-dir")
+        .arg("--quiet")
+        .arg("--no-warnings")
+        .args(["-f", FORMAT])
+        .args(["--merge-output-format", "mp4"])
+        .args(["--max-filesize", "150M"])
+        // Ignore les vidéos de plus de 30 min (sinon fichier/traffic énormes).
+        .args(["--match-filter", "duration < 1800"])
+        .args(["--socket-timeout", "20"])
+        .arg("-o")
+        .arg(out_template)
+        .arg("--")
+        .arg(url)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await?;
+    Ok(status.success())
+}
+
+/// Retrouve le fichier produit par yt-dlp pour un identifiant donné.
+fn find_output(dir: &Path, id: &str) -> Option<PathBuf> {
+    let exact = dir.join(format!("{id}.mp4"));
+    if exact.exists() {
+        return Some(exact);
+    }
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+            if name.starts_with(id) && !name.ends_with(".part") {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
 struct Handler {
     channel_id: u64,
     tx: broadcast::Sender<String>,
+    downloader: Option<Arc<Downloader>>,
 }
 
 impl Handler {
@@ -152,9 +298,29 @@ impl EventHandler for Handler {
             relayed += 1;
         }
 
-        // Liens image/vidéo collés directement dans le message.
-        // https uniquement : l'overlay (webview) bloque le contenu http.
+        // Liens dans le message : médias directs (https) et YouTube.
+        let mut yt_launched = 0u32;
         for word in msg.content.split_whitespace() {
+            // Lien YouTube -> téléchargement asynchrone via yt-dlp.
+            if is_youtube_url(word) {
+                if let Some(dl) = &self.downloader {
+                    if yt_launched < 3 {
+                        yt_launched += 1;
+                        let dl = dl.clone();
+                        let http = ctx.http.clone();
+                        let channel_id = msg.channel_id;
+                        let msg_id = msg.id;
+                        let url = word.to_string();
+                        let who = sender.to_string();
+                        tokio::spawn(async move {
+                            dl.handle(http, channel_id, msg_id, url, who).await;
+                        });
+                    }
+                }
+                continue;
+            }
+            // Lien direct https vers une image/vidéo (http ignoré : bloqué par
+            // l'overlay).
             if !word.starts_with("https://") {
                 continue;
             }
@@ -246,7 +412,7 @@ async fn client_loop(mut socket: WebSocket, mut rx: broadcast::Receiver<String>,
 
 /// Config par variables d'environnement, pour un hébergement type PaaS
 /// (AtlasFlow, Railway…) : DISCORD_TOKEN, CHANNEL_ID, SECRET,
-/// et en option BIND ou PORT (défaut 0.0.0.0:3000).
+/// et en option PUBLIC_URL, BIND ou PORT (défaut 0.0.0.0:3000).
 fn config_from_env() -> Option<Config> {
     let token = std::env::var("DISCORD_TOKEN").ok();
     let channel = std::env::var("CHANNEL_ID").ok();
@@ -287,6 +453,7 @@ fn config_from_env() -> Option<Config> {
         channel_id,
         bind,
         secret: secret.unwrap(),
+        public_url: std::env::var("PUBLIC_URL").ok().filter(|s| !s.trim().is_empty()),
     })
 }
 
@@ -348,6 +515,32 @@ async fn main() {
     }
 
     let (tx, _) = broadcast::channel::<String>(64);
+
+    // Dossier des vidéos YouTube téléchargées (nettoyé au fil de l'eau).
+    let media_dir = std::env::temp_dir().join("livechat-media");
+    if let Err(e) = std::fs::create_dir_all(&media_dir) {
+        warn!("dossier média « {} » non créé : {e}", media_dir.display());
+    }
+
+    // Le téléchargement YouTube n'est possible que si on connaît l'URL
+    // publique du serveur (pour construire des liens que les overlays peuvent
+    // atteindre).
+    let downloader = match &config.public_url {
+        Some(public_url) => {
+            info!("YouTube activé (téléchargement via yt-dlp)");
+            Some(Arc::new(Downloader {
+                dir: media_dir.clone(),
+                public_url: public_url.clone(),
+                sem: Arc::new(Semaphore::new(2)),
+                tx: tx.clone(),
+            }))
+        }
+        None => {
+            info!("YouTube désactivé (définis PUBLIC_URL pour l'activer)");
+            None
+        }
+    };
+
     let state = Arc::new(AppState {
         tx: tx.clone(),
         secret: config.secret.clone(),
@@ -358,6 +551,8 @@ async fn main() {
         // Les hébergeurs type AtlasFlow vérifient que GET / répond 2xx.
         .route("/", get(|| async { "LiveChat server OK" }))
         .route("/health", get(|| async { "ok" }))
+        // Vidéos YouTube téléchargées (supporte les requêtes Range pour la lecture).
+        .nest_service("/media", ServeDir::new(&media_dir))
         .with_state(state);
 
     let listener = match tokio::net::TcpListener::bind(&config.bind).await {
@@ -379,6 +574,7 @@ async fn main() {
         .event_handler(Handler {
             channel_id: config.channel_id,
             tx,
+            downloader,
         })
         .await
     {
