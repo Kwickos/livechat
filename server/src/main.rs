@@ -180,7 +180,7 @@ impl Downloader {
                     .file_name()
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_default();
-                let media_url = format!("{}/media/{}", self.public_url.trim_end_matches('/'), name);
+                let media_url = format!("{}/media/{}", self.public_url, name);
                 let event = MediaEvent {
                     r#type: "media",
                     kind: "video",
@@ -208,6 +208,18 @@ impl Downloader {
                 let _ = channel_id.create_reaction(&http, msg_id, cross).await;
             }
         }
+    }
+}
+
+/// Normalise l'URL publique : ajoute https:// si le schéma manque et retire
+/// le / final. Sans ça, une URL sans schéma est interprétée par l'overlay
+/// comme un chemin relatif et le média ne s'affiche pas.
+fn normalize_public_url(u: &str) -> String {
+    let u = u.trim().trim_end_matches('/');
+    if u.starts_with("http://") || u.starts_with("https://") {
+        u.to_string()
+    } else {
+        format!("https://{u}")
     }
 }
 
@@ -527,10 +539,11 @@ async fn main() {
     // atteindre).
     let downloader = match &config.public_url {
         Some(public_url) => {
-            info!("YouTube activé (téléchargement via yt-dlp)");
+            let public_url = normalize_public_url(public_url);
+            info!("YouTube activé (téléchargement via yt-dlp), base {public_url}");
             Some(Arc::new(Downloader {
                 dir: media_dir.clone(),
-                public_url: public_url.clone(),
+                public_url,
                 sem: Arc::new(Semaphore::new(2)),
                 tx: tx.clone(),
             }))
