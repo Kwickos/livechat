@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Capacité par défaut de la fenêtre overlay",
-  "windows": ["main"],
+  "description": "Capacité par défaut des fenêtres overlay et paramètres",
+  "windows": ["main", "settings"],
   "permissions": ["core:default"]
 }

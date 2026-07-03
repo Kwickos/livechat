@@ -35,14 +35,41 @@ const LOAD_TIMEOUT_MS = 15000;
 const queue = [];
 let busy = false;
 let finishing = false;
+let fallbackMuted = false; // média forcé en muet par le blocage autoplay
 let hideTimer = null;
 let guardTimer = null;
 let statusTimer = null;
+
+function applyLayout() {
+  const pct = Math.min(Math.max(config.max_size_percent, 10), 95);
+  document.documentElement.style.setProperty("--max-w", pct + "vw");
+  document.documentElement.style.setProperty("--max-h", pct + "vh");
+
+  const positions = ["center", "top-left", "top-right", "bottom-left", "bottom-right"];
+  const pos = positions.includes(config.position) ? config.position : "center";
+  stage.className = "pos-" + pos;
+}
 
 async function init() {
   // Les écouteurs d'abord : un événement émis pendant l'invoke serait perdu.
   await listen("media", (e) => enqueue(e.payload));
   await listen("status", (e) => onStatus(e.payload));
+  // Réglages modifiés dans la fenêtre Paramètres : appliqués à chaud,
+  // y compris le volume du média en cours de lecture.
+  await listen("display-config", (e) => {
+    config = Object.assign(config, e.payload);
+    applyLayout();
+    const v = Math.min(Math.max(config.volume, 0), 1);
+    video.volume = v;
+    audio.volume = v;
+    if (v <= 0) {
+      video.muted = audio.muted = true;
+    } else if (!fallbackMuted) {
+      // ne jamais ré-activer le son d'un média que le navigateur a forcé
+      // en muet (blocage autoplay)
+      video.muted = audio.muted = false;
+    }
+  });
 
   let startup = null;
   try {
@@ -55,13 +82,7 @@ async function init() {
     // valeurs par défaut
   }
 
-  const pct = Math.min(Math.max(config.max_size_percent, 10), 95);
-  document.documentElement.style.setProperty("--max-w", pct + "vw");
-  document.documentElement.style.setProperty("--max-h", pct + "vh");
-
-  const positions = ["center", "top-left", "top-right", "bottom-left", "bottom-right"];
-  const pos = positions.includes(config.position) ? config.position : "center";
-  stage.className = "pos-" + pos;
+  applyLayout();
 
   // L'état de démarrage est tiré (pas poussé) : impossible de le rater.
   if (startup) onStatus(startup);
@@ -106,6 +127,7 @@ function pump() {
 
 function show(item) {
   clearTimeout(hideTimer); // aucun minuteur orphelin d'un média précédent
+  fallbackMuted = false;
   senderEl.textContent = item.sender || "";
   const caption = (item.caption || "").trim();
   const showCaption = caption && !caption.startsWith("http");
@@ -131,6 +153,7 @@ function show(item) {
       armHide(config.max_video_seconds);
       video.play().catch(() => {
         // l'autoplay avec son a pu être bloqué : on retente en muet
+        fallbackMuted = true;
         video.muted = true;
         video.play().catch(finish);
       });
@@ -148,6 +171,7 @@ function show(item) {
       armHide(config.max_video_seconds);
       audio.play().catch(() => {
         // en cas de blocage autoplay, on laisse au moins la carte visible
+        fallbackMuted = true;
         audio.muted = true;
         audio.play().catch(finish);
       });
@@ -206,12 +230,12 @@ function onStatus(s) {
 
   // Messages de configuration : prioritaires et durables.
   const configMessages = {
-    "config-created": (d) =>
-      "⚙️ config.toml créé (" + d + ") : renseigne « server » et « secret », puis relance l'overlay.",
+    "config-created": () =>
+      "⚙️ Première utilisation : configure le serveur dans la fenêtre Paramètres qui vient de s'ouvrir.",
     "config-create-failed": (d) =>
-      "⚠️ Impossible de créer config.toml (" + d + ") — déplace l'exe dans un dossier accessible en écriture.",
+      "⚠️ Impossible de créer config.toml (" + d + ").",
     "config-invalid": (d) =>
-      "⚙️ config.toml invalide (" + d + ") — corrige le fichier puis relance l'overlay.",
+      "⚙️ config.toml invalide (" + d + ") — corrige-le dans la fenêtre Paramètres.",
   };
   if (configMessages[s.state]) {
     stickyUntil = Date.now() + 45000;
@@ -225,7 +249,18 @@ function onStatus(s) {
     "connecting": "Connexion au serveur…",
     "connected": "🟢 Connecté",
     "disconnected": "🔴 Déconnecté — reconnexion…",
+    "update-installed": "✅ Mise à jour installée — redémarrage…",
+    "update-none": "✔️ L'overlay est à jour",
+    "update-busy": "⏳ Une vérification est déjà en cours…",
   };
+  if (s.state === "update-downloading") {
+    showStatus("⬇️ Mise à jour " + (s.detail || "") + " — téléchargement…", 60000);
+    return;
+  }
+  if (s.state === "update-error") {
+    showStatus("⚠️ Mise à jour impossible : " + (s.detail || "erreur"), 8000);
+    return;
+  }
   let text = messages[s.state] || s.state;
   if (s.state === "error") {
     text = "🔴 Connexion impossible : " + (s.detail || "erreur inconnue");

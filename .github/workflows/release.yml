@@ -1,0 +1,48 @@
+# Release de l'overlay : sur un tag v*, compile l'installeur NSIS signé
+# et le publie sur GitHub Releases avec latest.json (auto-updater).
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Garde-fou : un tag v0.2.1 avec une conf restée en 0.2.0 publierait une
+      # release que personne n'installerait jamais (l'updater compare 0.2.0 à 0.2.0).
+      - name: Vérifie que le tag correspond à la version
+        shell: pwsh
+        run: |
+          $conf = (Get-Content overlay/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargo = (Select-String -Path overlay/src-tauri/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          if ($conf -ne $tag) { throw "Le tag v$tag ne correspond pas a la version $conf de tauri.conf.json - bump la version avant de tagger." }
+          if ($cargo -ne $tag) { throw "Le tag v$tag ne correspond pas a la version $cargo de Cargo.toml - bump la version avant de tagger." }
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Pas de setup-node ni de package.json : le frontend est statique,
+      # l'action installe le CLI tauri toute seule.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: overlay
+          tagName: ${{ github.ref_name }}
+          releaseName: "LiveChat Overlay ${{ github.ref_name }}"
+          releaseBody: "Installeur Windows dans les assets ci-dessous. Les overlays déjà installés se mettront à jour tout seuls."
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true

@@ -79,27 +79,44 @@ Au démarrage tu dois voir `Bot Discord connecté en tant que …`.
 
 ## 3. Installer l'overlay (chez chaque pote)
 
-```powershell
-cargo build --release -p livechat-overlay
-```
+Chaque pote télécharge **`LiveChat.Overlay_x.y.z_x64-setup.exe`** depuis la
+[dernière release GitHub](https://github.com/Kwickos/livechat/releases/latest) et l'installe
+(pas besoin de droits admin — installation par utilisateur).
 
-Distribue `target\release\livechat-overlay.exe` (un seul fichier). Chaque pote :
+> Windows SmartScreen affichera « Éditeur inconnu » à la première installation
+> (l'app n'a pas de certificat payant) : cliquer **Informations complémentaires → Exécuter quand même**.
 
-1. Le met dans un dossier accessible en écriture (pas `C:\Program Files`) et le lance une première fois → un `config.toml` modèle est créé à côté de l'exe ;
-2. Édite ce `config.toml` :
-   ```toml
-   server = "ws://IP_DU_SERVEUR:9000/ws"
-   secret = "le-meme-mot-de-passe-que-le-serveur"
-   ```
-3. Relance l'overlay. Une icône apparaît dans la zone de notification (à côté de l'horloge) :
-   - **Tester l'affichage** → affiche un média de test pour vérifier que l'overlay marche ;
-   - **Quitter** → ferme l'overlay.
+Au premier lancement, la **fenêtre Paramètres s'ouvre automatiquement** :
 
-Un badge « 🟢 Connecté » s'affiche en haut à droite quand la connexion au serveur est établie. Ensuite, tout média posté dans le salon s'affiche chez tout le monde, puis disparaît.
+1. Renseigner l'**adresse du serveur** (ex. `wss://ton-projet.atlasflow.dev/ws`) et le **mot de passe partagé** ;
+2. Régler si besoin position, taille, durées et volume ;
+3. **Enregistrer** → **Redémarrer maintenant**.
 
-Options du `config.toml` de l'overlay : durée d'affichage, volume des vidéos, position à l'écran (`center`, `top-left`, `top-right`, `bottom-left`, `bottom-right`), taille maximale.
+L'app vit ensuite dans la zone de notification (à côté de l'horloge) :
+**Paramètres**, **Tester l'affichage**, **Vérifier les mises à jour**, **Quitter**.
+Un badge « 🟢 Connecté » s'affiche en haut à droite quand la connexion est établie.
+
+**Mises à jour automatiques** : l'overlay vérifie GitHub Releases au démarrage puis
+toutes les 4 h, télécharge, installe et se relance tout seul. Personne n'a rien à faire.
+
+La config est stockée dans `%APPDATA%\livechat-overlay\config.toml` (ou à côté de
+l'exe en mode portable) — éditable à la main, mais la fenêtre Paramètres suffit.
 
 > L'overlay nécessite WebView2, préinstallé sur Windows 11 (et sur Windows 10 récent).
+
+## Publier une nouvelle version de l'overlay
+
+1. Modifier `version` dans `overlay/src-tauri/tauri.conf.json` **et** `overlay/src-tauri/Cargo.toml` (ex. `0.2.1`) ;
+2. Commit + push, puis :
+   ```powershell
+   git tag v0.2.1
+   git push origin v0.2.1
+   ```
+3. GitHub Actions compile l'installeur signé et publie la release (~10 min).
+   Tous les overlays installés se mettront à jour automatiquement.
+
+(Les clés de signature : la privée est dans les secrets GitHub du repo et dans
+`~\.tauri\livechat-overlay.key` — à ne jamais perdre ni commiter ; la publique est dans `tauri.conf.json`.)
 
 ## Liens YouTube (optionnel)
 

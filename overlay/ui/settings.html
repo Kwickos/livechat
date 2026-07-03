@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>LiveChat — Paramètres</title>
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+  <main>
+    <h1>Paramètres</h1>
+
+    <section>
+      <h2>Connexion</h2>
+      <label for="server">Adresse du serveur</label>
+      <input id="server" type="text" placeholder="wss://mon-projet.atlasflow.dev/ws" spellcheck="false" autocomplete="off" />
+      <label for="secret">Mot de passe partagé</label>
+      <div class="row">
+        <input id="secret" type="password" spellcheck="false" autocomplete="off" />
+        <button id="toggle-secret" type="button" title="Afficher / masquer">👁</button>
+      </div>
+      <label class="check">
+        <input id="autostart" type="checkbox" />
+        Lancer automatiquement au démarrage de Windows
+      </label>
+    </section>
+
+    <section>
+      <h2>Affichage</h2>
+      <label for="position">Position à l'écran</label>
+      <select id="position">
+        <option value="center">Centre</option>
+        <option value="top-left">Haut gauche</option>
+        <option value="top-right">Haut droite</option>
+        <option value="bottom-left">Bas gauche</option>
+        <option value="bottom-right">Bas droite</option>
+      </select>
+
+      <label for="max-size">Taille maximale <span class="val" id="size-val"></span></label>
+      <input id="max-size" type="range" min="10" max="95" step="1" />
+
+      <label for="display-seconds">Durée d'affichage des images <span class="val" id="imgsec-val"></span></label>
+      <input id="display-seconds" type="range" min="1" max="60" step="1" />
+
+      <label for="max-video-seconds">Durée max vidéos &amp; sons <span class="val" id="vidsec-val"></span></label>
+      <input id="max-video-seconds" type="range" min="5" max="600" step="5" />
+
+      <label for="volume">Volume <span class="val" id="volume-val"></span></label>
+      <input id="volume" type="range" min="0" max="100" step="5" />
+    </section>
+
+    <div id="restart-bar" class="hidden">
+      <span>La connexion doit redémarrer pour appliquer ces changements.</span>
+      <button id="restart-now" type="button">Redémarrer maintenant</button>
+    </div>
+
+    <div class="actions">
+      <button id="save" class="primary" type="button">Enregistrer</button>
+      <button id="test" type="button">Tester l'affichage</button>
+      <span id="save-status"></span>
+    </div>
+
+    <footer>
+      <span id="version"></span>
+      <button id="check-updates" class="link" type="button">Vérifier les mises à jour</button>
+      <span id="update-status"></span>
+    </footer>
+  </main>
+  <script src="settings.js"></script>
+</body>
+</html>
