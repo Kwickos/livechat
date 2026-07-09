@@ -1,5 +1,5 @@
-# Image du serveur LiveChat (bot Discord + relais WebSocket),
-# prête pour AtlasFlow / Railway / tout hébergeur de conteneurs.
+# Image du serveur LiveChat self-host (bot Discord + relais WebSocket),
+# prête pour Docker Compose ou tout hébergeur de conteneurs.
 
 # bookworm explicite : le binaire doit être lié à la même version de GLIBC
 # que l'image d'exécution ci-dessous (sinon « GLIBC_2.xx not found »).
@@ -22,7 +22,7 @@ COPY --from=build /app/target/release/livechat-server /usr/local/bin/livechat-se
 # Pas besoin de root : le serveur ne fait que du réseau + écrire dans /tmp.
 USER 65534:65534
 
-# AtlasFlow attend une app qui écoute sur le port 3000.
+# Le conteneur écoute sur 3000 ; docker-compose expose 9000 par défaut.
 ENV PORT=3000
 EXPOSE 3000
 CMD ["livechat-server"]

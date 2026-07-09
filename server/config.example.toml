@@ -20,6 +20,6 @@ secret = "change-moi"
 
 # (Optionnel) URL publique du serveur, pour activer les liens YouTube.
 # Les vidéos YouTube postées sont téléchargées puis servies depuis cette
-# adresse. Sur AtlasFlow, c'est l'URL du projet. Laisse en commentaire pour
+# adresse. Laisse en commentaire pour
 # désactiver YouTube.
-# public_url = "https://mon-projet.atlasflow.dev"
+# public_url = "https://ton-domaine.example"

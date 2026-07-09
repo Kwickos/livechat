@@ -24,7 +24,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct Config {
-    /// Adresse du serveur, ex. "wss://ton-projet.atlasflow.dev/ws"
+    /// Adresse du serveur self-host, ex. "wss://ton-domaine.example/ws"
     server: String,
     /// Mot de passe partagé (le même que côté serveur).
     secret: String,
@@ -43,16 +43,23 @@ struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            // Serveur du groupe précâblé : à l'installation, il ne reste que
-            // le mot de passe à saisir dans la fenêtre Paramètres.
-            server: "wss://livechat-alexandre-marty-1b609611.atlasflow.dev/ws".into(),
-            secret: "change-moi".into(),
+            server: String::new(),
+            secret: String::new(),
             display_seconds: 8.0,
             max_video_seconds: 60.0,
             volume: 0.5,
             position: "center".into(),
             max_size_percent: 45.0,
         }
+    }
+}
+
+impl Config {
+    fn can_connect(&self) -> bool {
+        let server = self.server.trim();
+        !self.secret.trim().is_empty()
+            && self.secret != "change-moi"
+            && (server.starts_with("ws://") || server.starts_with("wss://"))
     }
 }
 
@@ -65,7 +72,8 @@ fn render_config(c: &Config) -> String {
         "# Configuration de l'overlay LiveChat.\n\
          # Modifiable ici ou via la fenêtre Paramètres (icône de la zone de notification).\n\
          \n\
-         # Adresse du serveur (wss://… sur AtlasFlow, ws://IP:9000/ws en local).\n\
+         # Adresse du serveur self-host (wss://domaine/ws, ou ws://IP:9000/ws en local).\n\
+         # Pour l'offre hébergée officielle, utilise la connexion Discord dans l'overlay.\n\
          server = {server}\n\
          \n\
          # Mot de passe partagé (le même que côté serveur).\n\
@@ -513,9 +521,9 @@ fn main() {
             Some(format!("{} — {e}", path.display())),
         ),
     };
-    // Config absente ou cassée : on ne tente pas de se connecter avec des
-    // valeurs par défaut trompeuses ; la fenêtre Paramètres s'ouvre à la place.
-    let connect = matches!(status, ConfigStatus::Loaded);
+    // Config absente, cassée ou incomplète : on ouvre les paramètres au lieu
+    // de boucler sur une connexion impossible.
+    let connect = matches!(status, ConfigStatus::Loaded) && config.can_connect();
     let startup = Startup {
         state,
         detail,
@@ -634,4 +642,24 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("erreur au lancement de l'overlay");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn default_config_does_not_connect() {
+        assert!(!Config::default().can_connect());
+    }
+
+    #[test]
+    fn self_host_config_can_connect() {
+        let config = Config {
+            server: "wss://example.com/ws".into(),
+            secret: "real-secret".into(),
+            ..Config::default()
+        };
+        assert!(config.can_connect());
+    }
 }

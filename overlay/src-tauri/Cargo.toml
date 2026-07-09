@@ -15,8 +15,7 @@ tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["time"] }
-# rustls-tls-webpki-roots : permet le wss:// (serveur hébergé derrière TLS,
-# ex. AtlasFlow) avec des certificats racine embarqués.
+# rustls-tls-webpki-roots : permet le wss:// avec des certificats racine embarqués.
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 # rustls 0.23 exige un fournisseur crypto explicite (sinon panique TLS en wss://).

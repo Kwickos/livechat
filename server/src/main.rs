@@ -40,7 +40,7 @@ struct Config {
     bind: String,
     /// Mot de passe partagé avec les overlays.
     secret: String,
-    /// URL publique du serveur (ex. https://mon-projet.atlasflow.dev).
+    /// URL publique du serveur (ex. https://ton-domaine.example).
     /// Requise pour activer les liens YouTube : les vidéos téléchargées sont
     /// servies à partir de cette adresse. Laissée vide = YouTube désactivé.
     #[serde(default)]
@@ -428,8 +428,8 @@ async fn client_loop(mut socket: WebSocket, mut rx: broadcast::Receiver<String>,
     info!("overlay déconnecté");
 }
 
-/// Config par variables d'environnement, pour un hébergement type PaaS
-/// (AtlasFlow, Railway…) : DISCORD_TOKEN, CHANNEL_ID, SECRET,
+/// Config par variables d'environnement, pour Docker / hébergeur de conteneurs :
+/// DISCORD_TOKEN, CHANNEL_ID, SECRET,
 /// et en option PUBLIC_URL, BIND ou PORT (défaut 0.0.0.0:3000).
 fn config_from_env() -> Option<Config> {
     let token = std::env::var("DISCORD_TOKEN").ok();
@@ -502,7 +502,7 @@ fn read_config() -> Config {
          Soit : copie server/config.example.toml vers config.toml (à côté de \
          l'exe ou dans le dossier courant) et remplis-le.\n\
          Soit : définis les variables d'environnement DISCORD_TOKEN, \
-         CHANNEL_ID et SECRET (hébergement type AtlasFlow/Railway)."
+         CHANNEL_ID et SECRET (Docker / hébergeur de conteneurs)."
     );
     std::process::exit(1);
 }
@@ -567,7 +567,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
-        // Les hébergeurs type AtlasFlow vérifient que GET / répond 2xx.
+        // Les hébergeurs de conteneurs vérifient souvent que GET / répond 2xx.
         .route("/", get(|| async { "LiveChat server OK" }))
         .route("/health", get(|| async { "ok" }))
         // Vidéos YouTube téléchargées (supporte les requêtes Range pour la lecture).
