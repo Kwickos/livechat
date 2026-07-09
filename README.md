@@ -16,6 +16,16 @@ Deux programmes :
 | `livechat-server` | Toi (une seule instance) | Bot Discord : écoute le salon et rediffuse les médias en WebSocket |
 | `livechat-overlay` | Chaque pote (et toi) | Fenêtre transparente au premier plan qui affiche les médias reçus |
 
+Deux modes sont prévus :
+
+| Mode | Pour qui | Fonctionnement |
+|---|---|---|
+| Self-host | Ceux qui veulent gérer leur infra | Ils lancent leur serveur + leur bot Discord. |
+| Hosted | Ceux qui veulent juste installer | Ils ajoutent le bot officiel, paient l'abonnement, puis choisissent leur serveur dans l'overlay. |
+
+Le mode hosted vit dans un backend séparé. Ce dépôt reste self-hostable et contient
+l'overlay public.
+
 ---
 
 ## 1. Créer le bot Discord (une seule fois)
@@ -35,32 +45,46 @@ Deux programmes :
 
 ## 2. Lancer le serveur
 
-### Option A — hébergé sur AtlasFlow (recommandé : pas de port à ouvrir)
+### Option A — Docker Compose
 
-1. Pousse ce dépôt sur GitHub (repo privé conseillé — le token n'y est pas, mais autant rester discret).
-2. Sur [AtlasFlow](https://atlasflow.com) : crée un compte, choisis un plan (Hobby à 5 $/mois suffit largement — le serveur est une petite instance quasi idle), installe leur GitHub App et donne-lui accès au repo.
-3. **New project** → sélectionne le repo. AtlasFlow détecte le `Dockerfile` à la racine tout seul.
-4. Ajoute les variables d'environnement :
+```bash
+cp .env.example .env
+```
 
-   | Variable | Valeur |
-   |---|---|
-   | `DISCORD_TOKEN` | le token du bot |
-   | `CHANNEL_ID` | l'ID du salon |
-   | `SECRET` | le mot de passe partagé avec les overlays |
-   | `PUBLIC_URL` | *(optionnel)* l'URL du projet, ex. `https://ton-projet.atlasflow.dev` — active les liens YouTube (voir plus bas) |
+Édite `.env` :
 
-5. Crée le projet → le premier déploiement part tout seul. Vérifie dans les logs : `Bot Discord connecté en tant que …`.
-6. Récupère l'URL du projet (`https://ton-projet.atlasflow.dev`). Dans le `config.toml` des overlays :
+| Variable | Valeur |
+|---|---|
+| `DISCORD_TOKEN` | le token du bot |
+| `CHANNEL_ID` | l'ID du salon |
+| `SECRET` | le mot de passe partagé avec les overlays |
+| `PUBLIC_URL` | *(optionnel)* l'URL publique du serveur — active les liens YouTube |
+| `LIVECHAT_PORT` | port exposé sur ta machine, `9000` par défaut |
 
-   ```toml
-   server = "wss://ton-projet.atlasflow.dev/ws"
-   ```
+Puis lance :
 
-   (`wss://` et pas `ws://` — la connexion est chiffrée par AtlasFlow, et pas de port à préciser.)
+```bash
+docker compose up -d --build
+```
 
-Chaque `git push` redéploie automatiquement le serveur.
+Dans le `config.toml` des overlays :
 
-### Option B — chez toi
+```toml
+server = "ws://TON_IP:9000/ws"
+```
+
+Si tu mets un reverse proxy TLS devant le serveur :
+
+```toml
+server = "wss://ton-domaine.example/ws"
+```
+
+### Option B — hébergeur de conteneurs
+
+Pousse ce dépôt sur GitHub puis déploie le `Dockerfile` chez ton hébergeur
+de conteneurs. Ajoute les mêmes variables que dans `.env.example`.
+
+### Option C — depuis le code
 
 ```powershell
 # dans le dossier du projet
@@ -88,7 +112,7 @@ Chaque pote télécharge **`LiveChat.Overlay_x.y.z_x64-setup.exe`** depuis la
 
 Au premier lancement, la **fenêtre Paramètres s'ouvre automatiquement** :
 
-1. Renseigner l'**adresse du serveur** (ex. `wss://ton-projet.atlasflow.dev/ws`) et le **mot de passe partagé** ;
+1. Renseigner l'**adresse du serveur** (ex. `wss://ton-domaine.example/ws`) et le **mot de passe partagé** ;
 2. Régler si besoin position, taille, durées et volume ;
 3. **Enregistrer** → **Redémarrer maintenant**.
 
@@ -120,11 +144,11 @@ l'exe en mode portable) — éditable à la main, mais la fenêtre Paramètres s
 
 ## Liens YouTube (optionnel)
 
-Si tu définis `PUBLIC_URL` (variable d'env sur AtlasFlow, ou `public_url` dans le `config.toml` du serveur), le serveur **télécharge** les liens YouTube postés dans le salon (via `yt-dlp`, en ≤ 720p H.264) puis les rediffuse comme une vidéo normale — l'overlay les joue en autoplay, sans habillage YouTube. Rien à changer côté overlay.
+Si tu définis `PUBLIC_URL` (variable d'env, ou `public_url` dans le `config.toml` du serveur), le serveur **télécharge** les liens YouTube postés dans le salon (via `yt-dlp`, en ≤ 720p H.264) puis les rediffuse comme une vidéo normale — l'overlay les joue en autoplay, sans habillage YouTube. Rien à changer côté overlay.
 
 Le bot réagit au message : ⏳ pendant le téléchargement, 📺 quand c'est prêt, 🚫 en cas d'échec (vidéo > 30 min, > 150 Mo, ou indisponible).
 
-- **Sur AtlasFlow** : `yt-dlp` et `ffmpeg` sont installés automatiquement par le `Dockerfile`. Il suffit d'ajouter la variable `PUBLIC_URL = https://ton-projet.atlasflow.dev`.
+- **Docker / hébergeur de conteneurs** : `yt-dlp` et `ffmpeg` sont installés automatiquement par le `Dockerfile`. Il suffit d'ajouter `PUBLIC_URL`.
 - **En local** : installe `yt-dlp` et `ffmpeg` (`winget install yt-dlp.yt-dlp Gyan.FFmpeg`), et mets `public_url = "http://TON_IP:9000"` dans le `config.toml`.
 - Ça consomme de la bande passante (chaque vidéo est renvoyée à chaque overlay) et du stockage temporaire (fichiers supprimés après 30 min). Pour une bande de potes, ça reste négligeable.
 - Télécharger des vidéos YouTube va à l'encontre des CGU de YouTube ; à n'utiliser qu'entre potes, à titre privé.
@@ -150,7 +174,7 @@ Puis `cargo build --release` à la racine compile les deux programmes.
 |---|---|
 | `disallowed intents` au démarrage du serveur | **Message Content Intent** pas activé dans le portail développeur (étape 1.2) |
 | Le bot ne réagit pas 📺 aux messages | Mauvais `channel_id`, ou le bot n'a pas accès au salon |
-| L'overlay affiche « Connexion impossible : … 401 Unauthorized » | Le `secret` de l'overlay ne correspond pas à celui du serveur (`SECRET` sur AtlasFlow) |
+| L'overlay affiche « Connexion impossible : … 401 Unauthorized » | Le `secret` de l'overlay ne correspond pas à celui du serveur |
 | L'overlay affiche « Connexion impossible » (autre erreur) | Mauvaise adresse `server`, port pas redirigé, ou pare-feu |
 | Le serveur refuse de démarrer : « secret… change-moi » | Choisis un vrai mot de passe dans `secret`/`SECRET` — la valeur d'exemple est refusée |
 | L'overlay affiche « Déconnecté » puis se reconnecte | Normal après une coupure réseau — la reconnexion est automatique |

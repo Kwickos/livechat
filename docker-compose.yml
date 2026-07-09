@@ -1,0 +1,7 @@
+services:
+  livechat-server:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${LIVECHAT_PORT:-9000}:3000"
