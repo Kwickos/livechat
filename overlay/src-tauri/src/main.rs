@@ -14,6 +14,7 @@ use futures_util::StreamExt;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
@@ -38,6 +39,9 @@ struct Config {
     position: String,
     /// Taille maximale du média, en % de l'écran.
     max_size_percent: f64,
+    /// color, dark ou light.
+    #[serde(default = "default_icon_variant")]
+    icon_variant: String,
 }
 
 impl Default for Config {
@@ -50,6 +54,7 @@ impl Default for Config {
             volume: 0.5,
             position: "center".into(),
             max_size_percent: 45.0,
+            icon_variant: default_icon_variant(),
         }
     }
 }
@@ -64,6 +69,21 @@ impl Config {
 }
 
 const POSITIONS: &[&str] = &["center", "top-left", "top-right", "bottom-left", "bottom-right"];
+const ICON_VARIANTS: &[&str] = &["color", "dark", "light"];
+const TRAY_ID: &str = "main";
+
+fn default_icon_variant() -> String {
+    "color".into()
+}
+
+fn tray_icon(variant: &str) -> Image<'static> {
+    let bytes = match variant {
+        "dark" => include_bytes!("../icons/dark.png").as_slice(),
+        "light" => include_bytes!("../icons/light.png").as_slice(),
+        _ => include_bytes!("../icons/color.png").as_slice(),
+    };
+    Image::from_bytes(bytes).expect("icône embarquée invalide")
+}
 
 /// Sérialise la config au format TOML, avec les commentaires d'aide.
 fn render_config(c: &Config) -> String {
@@ -92,7 +112,10 @@ fn render_config(c: &Config) -> String {
          position = {position}\n\
          \n\
          # Taille maximale du média, en % de l'écran.\n\
-         max_size_percent = {size:?}\n",
+         max_size_percent = {size:?}\n\
+         \n\
+         # Icône de zone de notification : color, dark ou light.\n\
+         icon_variant = {icon_variant}\n",
         server = s(&c.server),
         secret = s(&c.secret),
         display = c.display_seconds,
@@ -100,6 +123,7 @@ fn render_config(c: &Config) -> String {
         volume = c.volume,
         position = s(&c.position),
         size = c.max_size_percent,
+        icon_variant = s(&c.icon_variant),
     )
 }
 
@@ -288,6 +312,9 @@ fn save_config(
     if !POSITIONS.contains(&c.position.as_str()) {
         c.position = "center".into();
     }
+    if !ICON_VARIANTS.contains(&c.icon_variant.as_str()) {
+        c.icon_variant = default_icon_variant();
+    }
 
     let path = &startup.config_path;
     if let Some(dir) = path.parent() {
@@ -301,6 +328,9 @@ fn save_config(
 
     // Applique immédiatement les réglages d'affichage à l'overlay.
     let _ = app.emit_to("main", "display-config", ui_state(&c, None, None));
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let _ = tray.set_icon(Some(tray_icon(&c.icon_variant)));
+    }
     *config.0.lock().unwrap() = c;
 
     Ok(needs_restart)
@@ -584,9 +614,10 @@ fn main() {
                 MenuItem::with_id(app, "update", "Vérifier les mises à jour", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quitter", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&settings_item, &test, &update, &quit])?;
-            let mut tray = TrayIconBuilder::new()
+            let tray = TrayIconBuilder::with_id(TRAY_ID)
                 .menu(&menu)
                 .tooltip("LiveChat Overlay")
+                .icon(tray_icon(&config_for_task.icon_variant))
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
@@ -599,9 +630,6 @@ fn main() {
                     }
                     _ => {}
                 });
-            if let Some(icon) = app.default_window_icon() {
-                tray = tray.icon(icon.clone());
-            }
             tray.build(app)?;
 
             // Certains jeux réordonnent les fenêtres en passant en plein

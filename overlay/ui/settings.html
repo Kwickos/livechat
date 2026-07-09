@@ -46,6 +46,25 @@
 
       <label for="volume">Volume <span class="val" id="volume-val"></span></label>
       <input id="volume" type="range" min="0" max="100" step="5" />
+
+      <label>Icône</label>
+      <div class="icon-picker" id="icon-picker">
+        <label class="icon-choice">
+          <input type="radio" name="icon-variant" value="color" />
+          <img src="icons/color.svg" alt="" />
+          <span>Couleur</span>
+        </label>
+        <label class="icon-choice">
+          <input type="radio" name="icon-variant" value="dark" />
+          <img src="icons/dark.svg" alt="" />
+          <span>Noir</span>
+        </label>
+        <label class="icon-choice">
+          <input type="radio" name="icon-variant" value="light" />
+          <img src="icons/light.svg" alt="" />
+          <span>Blanc</span>
+        </label>
+      </div>
     </section>
 
     <div id="restart-bar" class="hidden">
