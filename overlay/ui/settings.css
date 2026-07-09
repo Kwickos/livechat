@@ -116,6 +116,46 @@ input[type="range"] {
   accent-color: #5865f2;
 }
 
+.icon-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.icon-choice {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #3a3c46;
+  border-radius: 8px;
+  background: #17181c;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.icon-choice:has(input:checked) {
+  border-color: #5865f2;
+  background: #20233f;
+}
+
+.icon-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.icon-choice img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.icon-choice span {
+  color: #e8e9ee;
+  font-size: 12px;
+}
+
 .actions {
   display: flex;
   align-items: center;

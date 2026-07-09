@@ -19,6 +19,7 @@ const maxVideoSecondsEl = $("max-video-seconds");
 const volumeEl = $("volume");
 const saveStatusEl = $("save-status");
 const updateStatusEl = $("update-status");
+const iconVariantEls = Array.from(document.querySelectorAll('input[name="icon-variant"]'));
 
 let statusTimer = null;
 
@@ -55,12 +56,14 @@ async function load() {
     setRange(displaySecondsEl, Math.round(cfg.display_seconds));
     setRange(maxVideoSecondsEl, Math.round(cfg.max_video_seconds));
     volumeEl.value = Math.round(cfg.volume * 100);
+    setIconVariant(cfg.icon_variant || "color");
   } catch (_) {
     // valeurs par défaut du HTML (aperçu hors Tauri)
     maxSizeEl.value = 45;
     displaySecondsEl.value = 8;
     maxVideoSecondsEl.value = 60;
     volumeEl.value = 50;
+    setIconVariant("color");
   }
   try {
     $("version").textContent = "v" + (await invoke("get_app_version"));
@@ -97,6 +100,7 @@ async function save() {
     display_seconds: Number(displaySecondsEl.value),
     max_video_seconds: Number(maxVideoSecondsEl.value),
     volume: Number(volumeEl.value) / 100,
+    icon_variant: getIconVariant(),
   };
   try {
     const needsRestart = await invoke("save_config", { newConfig: cfg });
@@ -127,5 +131,16 @@ $("autostart").addEventListener("change", (e) => {
 [maxSizeEl, displaySecondsEl, maxVideoSecondsEl, volumeEl].forEach((el) =>
   el.addEventListener("input", refreshLabels)
 );
+
+function getIconVariant() {
+  return iconVariantEls.find((el) => el.checked)?.value || "color";
+}
+
+function setIconVariant(value) {
+  const wanted = ["color", "dark", "light"].includes(value) ? value : "color";
+  iconVariantEls.forEach((el) => {
+    el.checked = el.value === wanted;
+  });
+}
 
 load();

@@ -9,7 +9,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # custom-protocol : embarque l'UI dans le binaire, permet de compiler avec
 # cargo directement, sans le CLI tauri.
-tauri = { version = "2", features = ["tray-icon", "custom-protocol"] }
+tauri = { version = "2", features = ["tray-icon", "custom-protocol", "image-png"] }
 tauri-plugin-updater = "2"
 tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
