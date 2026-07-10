@@ -11,6 +11,7 @@ body {
   color: #e8e9ee;
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 14px;
+  overflow-y: auto;
 }
 
 main {
@@ -25,6 +26,20 @@ main {
 h1 {
   font-size: 19px;
   font-weight: 600;
+}
+
+.title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-version {
+  color: #9aa0b0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 section {
