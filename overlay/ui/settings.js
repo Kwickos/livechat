@@ -21,9 +21,11 @@ const saveStatusEl = $("save-status");
 const updateStatusEl = $("update-status");
 const iconVariantEls = Array.from(document.querySelectorAll('input[name="icon-variant"]'));
 const connectionModeEls = Array.from(document.querySelectorAll('input[name="connection-mode"]'));
-const hostedServerEl = $("hosted-server");
 const hostedGuildEl = $("hosted-guild");
 const hostedStatusEl = $("hosted-status");
+
+/** Service hébergé fixe — pas configurable par l'utilisateur. */
+const HOSTED_SERVER_URL = "https://livechat.zaaap.it";
 
 let statusTimer = null;
 let hostedToken = "";
@@ -58,7 +60,7 @@ function setHostedStatus(text, isError = false) {
 }
 
 function hostedBaseUrl() {
-  return hostedServerEl.value.trim().replace(/\/$/, "");
+  return HOSTED_SERVER_URL;
 }
 
 function setHostedGuilds(guilds, selected = "") {
@@ -94,18 +96,16 @@ async function loadHostedGuilds(selected = "") {
 }
 
 async function startHostedLogin() {
-  const base = hostedBaseUrl();
-  if (!/^https?:\/\//.test(base)) {
-    setHostedStatus("L'adresse du service doit commencer par https:// ou http://", true);
-    return;
-  }
   const openUrl = tauriApi?.opener?.openUrl;
   if (!openUrl) {
     setHostedStatus("La connexion Discord nécessite l'application installée.", true);
     return;
   }
   setHostedStatus("Ouverture de Discord dans ton navigateur…");
-  const url = base + "/auth/discord/start?return_to=" + encodeURIComponent("livechat-overlay://oauth");
+  const url =
+    hostedBaseUrl() +
+    "/auth/discord/start?return_to=" +
+    encodeURIComponent("livechat-overlay://oauth");
   try {
     await openUrl(url);
   } catch (error) {
@@ -163,7 +163,6 @@ async function load() {
     const mode = cfg.connection_mode === "hosted" ? "hosted" : "self-host";
     connectionModeEls.forEach((el) => (el.checked = el.value === mode));
     setConnectionMode(mode);
-    hostedServerEl.value = cfg.hosted_server || "";
     hostedToken = cfg.hosted_token || "";
     if (mode === "hosted" && hostedToken) await loadHostedGuilds(cfg.hosted_guild_id || "");
   } catch (_) {

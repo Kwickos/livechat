@@ -18,6 +18,7 @@ use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_updater::UpdaterExt;
 use tokio_tungstenite::connect_async;
@@ -46,8 +47,8 @@ struct Config {
     /// color, dark ou light.
     #[serde(default = "default_icon_variant")]
     icon_variant: String,
-    /// Base HTTPS du backend hosted, ex. "https://livechat.example.com".
-    #[serde(default)]
+    /// Base HTTPS du backend hosted (fixée à DEFAULT_HOSTED_SERVER).
+    #[serde(default = "default_hosted_server")]
     hosted_server: String,
     /// Session OAuth Discord courte, renouvelée à chaque connexion.
     #[serde(default)]
@@ -69,7 +70,7 @@ impl Default for Config {
             position: "center".into(),
             max_size_percent: 45.0,
             icon_variant: default_icon_variant(),
-            hosted_server: String::new(),
+            hosted_server: default_hosted_server(),
             hosted_token: String::new(),
             hosted_guild_id: String::new(),
         }
@@ -129,6 +130,17 @@ fn default_connection_mode() -> String {
     "self-host".into()
 }
 
+/// URL fixe du service hébergé (livechat.zaaap.it) — non configurable.
+fn default_hosted_server() -> String {
+    "https://livechat.zaaap.it".into()
+}
+
+/// Normalise la config : l'adresse hosted est toujours le domaine officiel.
+fn normalize_config(mut c: Config) -> Config {
+    c.hosted_server = default_hosted_server();
+    c
+}
+
 fn tray_icon(variant: &str) -> Image<'static> {
     let bytes = match variant {
         "dark" => include_bytes!("../icons/dark.png").as_slice(),
@@ -154,7 +166,7 @@ fn render_config(c: &Config) -> String {
          # Mot de passe partagé (le même que côté serveur).\n\
          secret = {secret}\n\
          \n\
-         # Offre hébergée : base HTTPS, session Discord et serveur choisi.\n\
+         # Offre hébergée : service fixe (livechat.zaaap.it), session Discord et serveur choisi.\n\
          hosted_server = {hosted_server}\n\
          hosted_token = {hosted_token}\n\
          hosted_guild_id = {hosted_guild_id}\n\
@@ -244,7 +256,7 @@ fn load_config() -> (Config, ConfigStatus, PathBuf) {
             continue;
         };
         return match toml::from_str::<Config>(&text) {
-            Ok(config) => (config, ConfigStatus::Loaded, path.clone()),
+            Ok(config) => (normalize_config(config), ConfigStatus::Loaded, path.clone()),
             // On signale le fichier cassé plutôt que de continuer en silence.
             Err(e) => (
                 Config::default(),
@@ -370,7 +382,8 @@ fn save_config(
     }
     c.server = c.server.trim().to_string();
     c.secret = c.secret.trim().to_string();
-    c.hosted_server = c.hosted_server.trim().trim_end_matches('/').to_string();
+    // Toujours le domaine officiel — le champ n'est plus exposé dans l'UI.
+    c.hosted_server = default_hosted_server();
     c.hosted_token = c.hosted_token.trim().to_string();
     c.hosted_guild_id = c.hosted_guild_id.trim().to_string();
     if c.connection_mode == "self-host" {
@@ -380,8 +393,6 @@ fn save_config(
         if c.secret.is_empty() {
             return Err("Le mot de passe partagé est vide.".into());
         }
-    } else if !(c.hosted_server.starts_with("https://") || c.hosted_server.starts_with("http://")) {
-        return Err("L'adresse du service hébergé doit commencer par https:// ou http://".into());
     } else if c.hosted_token.is_empty() || c.hosted_guild_id.is_empty() {
         return Err("Connecte Discord puis choisis un serveur avant d'enregistrer.".into());
     }
