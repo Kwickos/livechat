@@ -297,18 +297,14 @@ fn load_config() -> (Config, ConfigStatus, PathBuf) {
 /// Config partagée entre les fenêtres et mise à jour par « Enregistrer ».
 struct SharedConfig(Mutex<Config>);
 
-/// Contexte de démarrage (statut de la config, chemin de sauvegarde,
-/// valeurs de connexion au lancement — pour savoir si un restart est requis).
+/// Tâche WebSocket en cours. Elle est remplacée lorsqu'une connexion est modifiée.
+struct ConnectionTask(Mutex<Option<tauri::async_runtime::JoinHandle<()>>>);
+
+/// Contexte de démarrage (statut de la config et chemin de sauvegarde).
 struct Startup {
     state: Option<&'static str>,
     detail: Option<String>,
     config_path: PathBuf,
-    initial_server: String,
-    initial_secret: String,
-    initial_connection_mode: String,
-    initial_hosted_server: String,
-    initial_hosted_token: String,
-    initial_hosted_guild_id: String,
 }
 
 /// Ce que la webview de l'overlay a le droit de connaître : les réglages
@@ -372,6 +368,7 @@ fn save_config(
     app: AppHandle,
     config: tauri::State<'_, SharedConfig>,
     startup: tauri::State<'_, Startup>,
+    connection_task: tauri::State<'_, ConnectionTask>,
     new_config: Config,
 ) -> Result<bool, String> {
     ensure_settings(&window)?;
@@ -414,12 +411,7 @@ fn save_config(
     write_atomic(path, &render_config(&c))
         .map_err(|e| format!("Écriture impossible ({}) : {e}", path.display()))?;
 
-    let needs_restart = c.server != startup.initial_server
-        || c.secret != startup.initial_secret
-        || c.connection_mode != startup.initial_connection_mode
-        || c.hosted_server != startup.initial_hosted_server
-        || c.hosted_token != startup.initial_hosted_token
-        || c.hosted_guild_id != startup.initial_hosted_guild_id;
+    let reconnect = config.0.lock().unwrap().websocket_url() != c.websocket_url();
 
     // Applique immédiatement les réglages d'affichage à l'overlay.
     let _ = app.emit_to("main", "display-config", ui_state(&c, None, None));
@@ -427,8 +419,11 @@ fn save_config(
         let _ = tray.set_icon(Some(tray_icon(&c.icon_variant)));
     }
     *config.0.lock().unwrap() = c;
+    if reconnect {
+        replace_connection_task(&app, &connection_task, config.0.lock().unwrap().clone());
+    }
 
-    Ok(needs_restart)
+    Ok(false)
 }
 
 #[tauri::command]
@@ -616,6 +611,23 @@ async fn ws_task(app: AppHandle, config: Config) {
     }
 }
 
+/// Coupe proprement l'ancienne connexion puis relie l'overlay avec la nouvelle
+/// config. Changer de serveur Discord ne demande donc pas de relancer l'app.
+fn replace_connection_task(app: &AppHandle, connection_task: &ConnectionTask, config: Config) {
+    if let Some(task) = connection_task.0.lock().unwrap().take() {
+        task.abort();
+    }
+    if config.can_connect() {
+        let handle = app.clone();
+        let task = tauri::async_runtime::spawn(async move {
+            ws_task(handle, config).await;
+        });
+        *connection_task.0.lock().unwrap() = Some(task);
+    } else {
+        let _ = app.emit("status", json!({ "state": "disconnected" }));
+    }
+}
+
 fn open_settings(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("settings") {
         let _ = w.show();
@@ -653,12 +665,6 @@ fn main() {
         state,
         detail,
         config_path,
-        initial_server: config.server.clone(),
-        initial_secret: config.secret.clone(),
-        initial_connection_mode: config.connection_mode.clone(),
-        initial_hosted_server: config.hosted_server.clone(),
-        initial_hosted_token: config.hosted_token.clone(),
-        initial_hosted_guild_id: config.hosted_guild_id.clone(),
     };
     let config_for_task = config.clone();
 
@@ -677,6 +683,7 @@ fn main() {
             None,
         ))
         .manage(SharedConfig(Mutex::new(config)))
+        .manage(ConnectionTask(Mutex::new(None)))
         .manage(startup)
         .invoke_handler(tauri::generate_handler![
             get_config,
@@ -767,9 +774,8 @@ fn main() {
 
             let handle = app.handle().clone();
             if connect {
-                tauri::async_runtime::spawn(async move {
-                    ws_task(handle, config_for_task).await;
-                });
+                let connection_task = app.state::<ConnectionTask>();
+                replace_connection_task(&handle, &connection_task, config_for_task.clone());
             } else {
                 // Premier lancement ou config cassée : on guide l'utilisateur.
                 open_settings(&handle);

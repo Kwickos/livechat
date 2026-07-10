@@ -225,8 +225,10 @@ async function save() {
     const needsRestart = await invoke("save_config", { newConfig: cfg });
     showSaveStatus("Enregistré ✓", false);
     $("restart-bar").classList.toggle("hidden", !needsRestart);
+    return true;
   } catch (e) {
     showSaveStatus(String(e), true);
+    return false;
   }
 }
 
@@ -235,6 +237,11 @@ $("login-discord").addEventListener("click", startHostedLogin);
 refreshHostedGuildsEl.addEventListener("click", () => {
   setHostedStatus("Actualisation des serveurs…");
   loadHostedGuilds(hostedGuildEl.value);
+});
+hostedGuildEl.addEventListener("change", async () => {
+  if (!hostedGuildEl.value) return;
+  setHostedStatus("Connexion au serveur sélectionné…");
+  if (await save()) setHostedStatus("Serveur changé ✓");
 });
 $("restart-now").addEventListener("click", () => invoke("restart_app").catch(() => {}));
 $("test").addEventListener("click", () => invoke("show_test_media").catch(() => {}));
