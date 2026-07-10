@@ -2,5 +2,5 @@
   "identifier": "default",
   "description": "Capacité par défaut des fenêtres overlay et paramètres",
   "windows": ["main", "settings"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "deep-link:default", "opener:default"]
 }

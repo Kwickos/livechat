@@ -10,13 +10,43 @@
     <h1>Paramètres</h1>
 
     <section>
-      <h2>Connexion self-host</h2>
-      <label for="server">Adresse du serveur</label>
-      <input id="server" type="text" placeholder="wss://ton-domaine.example/ws" spellcheck="false" autocomplete="off" />
-      <label for="secret">Mot de passe partagé</label>
-      <div class="row">
-        <input id="secret" type="password" spellcheck="false" autocomplete="off" />
-        <button id="toggle-secret" type="button" title="Afficher / masquer">👁</button>
+      <h2>Connexion</h2>
+      <div class="connection-modes" role="radiogroup" aria-label="Mode de connexion">
+        <label class="connection-mode">
+          <input type="radio" name="connection-mode" value="self-host" checked />
+          <span>
+            <strong>Mon serveur</strong>
+            <small>Adresse et mot de passe partagés</small>
+          </span>
+        </label>
+        <label class="connection-mode">
+          <input type="radio" name="connection-mode" value="hosted" />
+          <span>
+            <strong>LiveChat hébergé</strong>
+            <small>Connexion avec Discord</small>
+          </span>
+        </label>
+      </div>
+
+      <div id="self-host-settings">
+        <label for="server">Adresse du serveur</label>
+        <input id="server" type="text" placeholder="wss://ton-domaine.example/ws" spellcheck="false" autocomplete="off" />
+        <label for="secret">Mot de passe partagé</label>
+        <div class="row">
+          <input id="secret" type="password" spellcheck="false" autocomplete="off" />
+          <button id="toggle-secret" type="button" title="Afficher / masquer">👁</button>
+        </div>
+      </div>
+
+      <div id="hosted-settings" class="hosted-notice hidden">
+        <label for="hosted-server">Adresse du service</label>
+        <input id="hosted-server" type="url" placeholder="https://livechat.example.com" spellcheck="false" autocomplete="off" />
+        <button id="login-discord" type="button">Se connecter avec Discord</button>
+        <span id="hosted-status">Connecte Discord pour afficher tes serveurs abonnés.</span>
+        <label for="hosted-guild">Serveur Discord</label>
+        <select id="hosted-guild" disabled>
+          <option value="">Connecte Discord d'abord</option>
+        </select>
       </div>
       <label class="check">
         <input id="autostart" type="checkbox" />
