@@ -571,7 +571,14 @@ async fn main() {
         .route("/", get(|| async { "LiveChat server OK" }))
         .route("/health", get(|| async { "ok" }))
         // Vidéos YouTube téléchargées (supporte les requêtes Range pour la lecture).
-        .nest_service("/media", ServeDir::new(&media_dir))
+        // CORS ouvert : l'overlay lit les pixels via canvas pour détecter la
+        // transparence, ce qui exige une réponse CORS.
+        .nest(
+            "/media",
+            Router::new()
+                .fallback_service(ServeDir::new(&media_dir))
+                .layer(tower_http::cors::CorsLayer::permissive()),
+        )
         .with_state(state);
 
     let listener = match tokio::net::TcpListener::bind(&config.bind).await {

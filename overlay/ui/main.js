@@ -118,6 +118,49 @@ function enqueue(item) {
   pump();
 }
 
+const alphaProbe = document.createElement("canvas");
+
+// Inspecte le canal alpha en dessinant le média réduit sur un petit canvas.
+// Renvoie true/false, ou null si l'inspection est impossible (média
+// cross-origin chargé sans CORS : le canvas est « tainted »).
+function probeAlpha(source, w, h) {
+  if (!w || !h) return null;
+  const scale = 64 / Math.max(w, h);
+  const cw = Math.max(1, Math.round(w * scale));
+  const ch = Math.max(1, Math.round(h * scale));
+  alphaProbe.width = cw;
+  alphaProbe.height = ch;
+  const ctx = alphaProbe.getContext("2d", { willReadFrequently: true });
+  ctx.clearRect(0, 0, cw, ch);
+  try {
+    ctx.drawImage(source, 0, 0, cw, ch);
+    const data = ctx.getImageData(0, 0, cw, ch).data;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 250) return true;
+    }
+    return false;
+  } catch (_) {
+    return null;
+  }
+}
+
+function setAlphaClass(el, alpha) {
+  el.classList.toggle("alpha", alpha === true);
+}
+
+// Charge le média avec crossOrigin d'abord (indispensable pour inspecter le
+// canal alpha via canvas). Si le host refuse CORS, on recharge sans : la
+// détection devient impossible et le style rectangulaire est conservé.
+function loadInto(el, url) {
+  el.crossOrigin = "anonymous";
+  el.onerror = () => {
+    el.onerror = finish;
+    el.removeAttribute("crossorigin");
+    el.src = url;
+  };
+  el.src = url;
+}
+
 function pump() {
   if (busy) return;
   const item = queue.shift();
@@ -142,14 +185,28 @@ function show(item) {
   img.classList.add("hidden");
   video.classList.add("hidden");
   audioCard.classList.add("hidden");
+  setAlphaClass(img, false);
+  setAlphaClass(video, false);
 
   if (item.kind === "video") {
     video.classList.remove("hidden");
     video.volume = Math.min(Math.max(config.volume, 0), 1);
     video.muted = config.volume <= 0;
-    video.onerror = finish;
     video.onended = finish;
     video.onloadeddata = () => {
+      const alpha = probeAlpha(video, video.videoWidth, video.videoHeight);
+      setAlphaClass(video, alpha);
+      if (alpha === false) {
+        // certains WebM alpha ouvrent sur une frame pleine : on re-vérifie
+        // une fois la lecture entamée
+        video.ontimeupdate = () => {
+          if (video.currentTime < 0.2) return;
+          video.ontimeupdate = null;
+          if (probeAlpha(video, video.videoWidth, video.videoHeight)) {
+            setAlphaClass(video, true);
+          }
+        };
+      }
       reveal();
       armHide(config.max_video_seconds);
       video.play().catch(() => {
@@ -159,7 +216,7 @@ function show(item) {
         video.play().catch(finish);
       });
     };
-    video.src = item.url;
+    loadInto(video, item.url);
   } else if (item.kind === "audio") {
     audioCard.classList.remove("hidden");
     audioName.textContent = item.filename || "🔊 Son";
@@ -180,12 +237,12 @@ function show(item) {
     audio.src = item.url;
   } else {
     img.classList.remove("hidden");
-    img.onerror = finish;
     img.onload = () => {
+      setAlphaClass(img, probeAlpha(img, img.naturalWidth, img.naturalHeight));
       reveal();
       armHide(config.display_seconds);
     };
-    img.src = item.url;
+    loadInto(img, item.url);
   }
 }
 
@@ -206,7 +263,7 @@ function finish() {
   clearTimeout(guardTimer);
   // Détache les handlers tout de suite : un chargement qui aboutit pendant
   // le fondu de sortie ne doit pas réafficher la boîte ni relancer la vidéo.
-  video.onerror = video.onended = video.onloadeddata = null;
+  video.onerror = video.onended = video.onloadeddata = video.ontimeupdate = null;
   audio.onerror = audio.onended = audio.onloadeddata = null;
   img.onerror = img.onload = null;
   box.classList.remove("visible");

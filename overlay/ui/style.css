@@ -57,8 +57,14 @@ body {
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
 }
 
-#video {
-  background: #000;
+/* Média avec canal alpha (sticker PNG, WebM transparent…) : ni cadre ni
+   fond — l'ombre épouse la forme réelle au lieu du rectangle. */
+#img.alpha,
+#video.alpha {
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.55));
 }
 
 #audio-card {
