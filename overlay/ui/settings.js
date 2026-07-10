@@ -20,8 +20,13 @@ const volumeEl = $("volume");
 const saveStatusEl = $("save-status");
 const updateStatusEl = $("update-status");
 const iconVariantEls = Array.from(document.querySelectorAll('input[name="icon-variant"]'));
+const connectionModeEls = Array.from(document.querySelectorAll('input[name="connection-mode"]'));
+const hostedServerEl = $("hosted-server");
+const hostedGuildEl = $("hosted-guild");
+const hostedStatusEl = $("hosted-status");
 
 let statusTimer = null;
+let hostedToken = "";
 
 function refreshLabels() {
   $("size-val").textContent = maxSizeEl.value + " %";
@@ -35,6 +40,104 @@ function showSaveStatus(text, isError) {
   saveStatusEl.classList.toggle("error", !!isError);
   clearTimeout(statusTimer);
   statusTimer = setTimeout(() => (saveStatusEl.textContent = ""), 5000);
+}
+
+function setConnectionMode(mode) {
+  const isSelfHost = mode === "self-host";
+  $("self-host-settings").classList.toggle("hidden", !isSelfHost);
+  $("hosted-settings").classList.toggle("hidden", isSelfHost);
+}
+
+function getConnectionMode() {
+  return connectionModeEls.find((el) => el.checked)?.value || "self-host";
+}
+
+function setHostedStatus(text, isError = false) {
+  hostedStatusEl.textContent = text;
+  hostedStatusEl.classList.toggle("error", isError);
+}
+
+function hostedBaseUrl() {
+  return hostedServerEl.value.trim().replace(/\/$/, "");
+}
+
+function setHostedGuilds(guilds, selected = "") {
+  hostedGuildEl.replaceChildren();
+  if (!guilds.length) {
+    const option = new Option("Aucun serveur abonné disponible", "");
+    hostedGuildEl.add(option);
+    hostedGuildEl.disabled = true;
+    return;
+  }
+  guilds.forEach((guild) => {
+    hostedGuildEl.add(new Option(guild.name, guild.guild_id, false, guild.guild_id === selected));
+  });
+  hostedGuildEl.disabled = false;
+}
+
+async function loadHostedGuilds(selected = "") {
+  const base = hostedBaseUrl();
+  if (!base || !hostedToken) return;
+  try {
+    const response = await fetch(base + "/api/me/guilds", {
+      headers: { Authorization: "Bearer " + hostedToken },
+    });
+    if (!response.ok) throw new Error("session expirée");
+    const guilds = await response.json();
+    setHostedGuilds(guilds, selected);
+    setHostedStatus(guilds.length ? "Discord connecté ✓" : "Aucun serveur abonné disponible.");
+  } catch (error) {
+    hostedToken = "";
+    setHostedGuilds([]);
+    setHostedStatus("Impossible de récupérer les serveurs : " + error.message, true);
+  }
+}
+
+async function startHostedLogin() {
+  const base = hostedBaseUrl();
+  if (!/^https?:\/\//.test(base)) {
+    setHostedStatus("L'adresse du service doit commencer par https:// ou http://", true);
+    return;
+  }
+  const openUrl = tauriApi?.opener?.openUrl;
+  if (!openUrl) {
+    setHostedStatus("La connexion Discord nécessite l'application installée.", true);
+    return;
+  }
+  setHostedStatus("Ouverture de Discord dans ton navigateur…");
+  const url = base + "/auth/discord/start?return_to=" + encodeURIComponent("livechat-overlay://oauth");
+  try {
+    await openUrl(url);
+  } catch (error) {
+    setHostedStatus(String(error), true);
+  }
+}
+
+async function handleDeepLink(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "livechat-overlay:" || url.hostname !== "oauth") return;
+    const token = url.searchParams.get("token");
+    if (!token) throw new Error("jeton de connexion absent");
+    hostedToken = token;
+    connectionModeEls.forEach((el) => (el.checked = el.value === "hosted"));
+    setConnectionMode("hosted");
+    await loadHostedGuilds();
+  } catch (error) {
+    setHostedStatus("Retour Discord invalide : " + error.message, true);
+  }
+}
+
+async function installDeepLinkHandler() {
+  const deepLink = tauriApi?.deepLink;
+  if (!deepLink) return;
+  try {
+    const urls = await deepLink.getCurrent();
+    await Promise.all((urls || []).map(handleDeepLink));
+    await deepLink.onOpenUrl((urls) => urls.forEach((url) => handleDeepLink(url)));
+  } catch (_) {
+    // Le plugin est absent dans l'aperçu navigateur.
+  }
 }
 
 // Élargit les bornes du curseur si la valeur du fichier les dépasse
@@ -57,6 +160,12 @@ async function load() {
     setRange(maxVideoSecondsEl, Math.round(cfg.max_video_seconds));
     volumeEl.value = Math.round(cfg.volume * 100);
     setIconVariant(cfg.icon_variant || "color");
+    const mode = cfg.connection_mode === "hosted" ? "hosted" : "self-host";
+    connectionModeEls.forEach((el) => (el.checked = el.value === mode));
+    setConnectionMode(mode);
+    hostedServerEl.value = cfg.hosted_server || "";
+    hostedToken = cfg.hosted_token || "";
+    if (mode === "hosted" && hostedToken) await loadHostedGuilds(cfg.hosted_guild_id || "");
   } catch (_) {
     // valeurs par défaut du HTML (aperçu hors Tauri)
     maxSizeEl.value = 45;
@@ -93,8 +202,12 @@ async function load() {
 
 async function save() {
   const cfg = {
+    connection_mode: getConnectionMode(),
     server: serverEl.value.trim(),
     secret: secretEl.value.trim(),
+    hosted_server: hostedBaseUrl(),
+    hosted_token: hostedToken,
+    hosted_guild_id: hostedGuildEl.value,
     position: positionEl.value,
     max_size_percent: Number(maxSizeEl.value),
     display_seconds: Number(displaySecondsEl.value),
@@ -112,6 +225,7 @@ async function save() {
 }
 
 $("save").addEventListener("click", save);
+$("login-discord").addEventListener("click", startHostedLogin);
 $("restart-now").addEventListener("click", () => invoke("restart_app").catch(() => {}));
 $("test").addEventListener("click", () => invoke("show_test_media").catch(() => {}));
 $("check-updates").addEventListener("click", () => {
@@ -128,6 +242,12 @@ $("autostart").addEventListener("change", (e) => {
     showSaveStatus("Impossible de modifier le démarrage automatique", true);
   });
 });
+connectionModeEls.forEach((el) =>
+  el.addEventListener("change", (e) => {
+    setConnectionMode(e.target.value);
+    if (e.target.value === "hosted" && hostedToken) loadHostedGuilds(hostedGuildEl.value);
+  })
+);
 [maxSizeEl, displaySecondsEl, maxVideoSecondsEl, volumeEl].forEach((el) =>
   el.addEventListener("input", refreshLabels)
 );
@@ -143,4 +263,9 @@ function setIconVariant(value) {
   });
 }
 
-load();
+async function init() {
+  await load();
+  await installDeepLinkHandler();
+}
+
+init();

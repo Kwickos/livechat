@@ -25,6 +25,9 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct Config {
+    /// self-host ou hosted.
+    #[serde(default = "default_connection_mode")]
+    connection_mode: String,
     /// Adresse du serveur self-host, ex. "wss://ton-domaine.example/ws"
     server: String,
     /// Mot de passe partagé (le même que côté serveur).
@@ -42,11 +45,21 @@ struct Config {
     /// color, dark ou light.
     #[serde(default = "default_icon_variant")]
     icon_variant: String,
+    /// Base HTTPS du backend hosted, ex. "https://livechat.example.com".
+    #[serde(default)]
+    hosted_server: String,
+    /// Session OAuth Discord courte, renouvelée à chaque connexion.
+    #[serde(default)]
+    hosted_token: String,
+    /// Guild Discord choisie dans le compte connecté.
+    #[serde(default)]
+    hosted_guild_id: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
+            connection_mode: default_connection_mode(),
             server: String::new(),
             secret: String::new(),
             display_seconds: 8.0,
@@ -55,25 +68,64 @@ impl Default for Config {
             position: "center".into(),
             max_size_percent: 45.0,
             icon_variant: default_icon_variant(),
+            hosted_server: String::new(),
+            hosted_token: String::new(),
+            hosted_guild_id: String::new(),
         }
     }
 }
 
 impl Config {
     fn can_connect(&self) -> bool {
-        let server = self.server.trim();
-        !self.secret.trim().is_empty()
-            && self.secret != "change-moi"
-            && (server.starts_with("ws://") || server.starts_with("wss://"))
+        match self.connection_mode.as_str() {
+            "hosted" => self.hosted_websocket_url().is_some(),
+            _ => {
+                let server = self.server.trim();
+                !self.secret.trim().is_empty()
+                    && self.secret != "change-moi"
+                    && (server.starts_with("ws://") || server.starts_with("wss://"))
+            }
+        }
+    }
+
+    fn hosted_websocket_url(&self) -> Option<String> {
+        let server = self.hosted_server.trim().trim_end_matches('/');
+        if self.hosted_token.trim().is_empty() || self.hosted_guild_id.trim().is_empty() {
+            return None;
+        }
+        let ws_base = if let Some(rest) = server.strip_prefix("https://") {
+            format!("wss://{rest}")
+        } else if let Some(rest) = server.strip_prefix("http://") {
+            format!("ws://{rest}")
+        } else {
+            return None;
+        };
+        let guild = utf8_percent_encode(self.hosted_guild_id.trim(), NON_ALPHANUMERIC);
+        let token = utf8_percent_encode(self.hosted_token.trim(), NON_ALPHANUMERIC);
+        Some(format!("{ws_base}/ws?guild_id={guild}&token={token}"))
+    }
+
+    fn websocket_url(&self) -> Option<String> {
+        if self.connection_mode == "hosted" {
+            return self.hosted_websocket_url();
+        }
+        let token = utf8_percent_encode(&self.secret, NON_ALPHANUMERIC);
+        let separator = if self.server.contains('?') { '&' } else { '?' };
+        Some(format!("{}{}token={token}", self.server, separator))
     }
 }
 
 const POSITIONS: &[&str] = &["center", "top-left", "top-right", "bottom-left", "bottom-right"];
 const ICON_VARIANTS: &[&str] = &["color", "dark", "light"];
+const CONNECTION_MODES: &[&str] = &["self-host", "hosted"];
 const TRAY_ID: &str = "main";
 
 fn default_icon_variant() -> String {
     "color".into()
+}
+
+fn default_connection_mode() -> String {
+    "self-host".into()
 }
 
 fn tray_icon(variant: &str) -> Image<'static> {
@@ -92,12 +144,19 @@ fn render_config(c: &Config) -> String {
         "# Configuration de l'overlay LiveChat.\n\
          # Modifiable ici ou via la fenêtre Paramètres (icône de la zone de notification).\n\
          \n\
+         # Mode de connexion : self-host ou hosted.\n\
+         connection_mode = {connection_mode}\n\
+         \n\
          # Adresse du serveur self-host (wss://domaine/ws, ou ws://IP:9000/ws en local).\n\
-         # Pour l'offre hébergée officielle, utilise la connexion Discord dans l'overlay.\n\
          server = {server}\n\
          \n\
          # Mot de passe partagé (le même que côté serveur).\n\
          secret = {secret}\n\
+         \n\
+         # Offre hébergée : base HTTPS, session Discord et serveur choisi.\n\
+         hosted_server = {hosted_server}\n\
+         hosted_token = {hosted_token}\n\
+         hosted_guild_id = {hosted_guild_id}\n\
          \n\
          # Durée d'affichage des images, en secondes.\n\
          display_seconds = {display:?}\n\
@@ -116,8 +175,12 @@ fn render_config(c: &Config) -> String {
          \n\
          # Icône de zone de notification : color, dark ou light.\n\
          icon_variant = {icon_variant}\n",
+        connection_mode = s(&c.connection_mode),
         server = s(&c.server),
         secret = s(&c.secret),
+        hosted_server = s(&c.hosted_server),
+        hosted_token = s(&c.hosted_token),
+        hosted_guild_id = s(&c.hosted_guild_id),
         display = c.display_seconds,
         video = c.max_video_seconds,
         volume = c.volume,
@@ -229,6 +292,10 @@ struct Startup {
     config_path: PathBuf,
     initial_server: String,
     initial_secret: String,
+    initial_connection_mode: String,
+    initial_hosted_server: String,
+    initial_hosted_token: String,
+    initial_hosted_guild_id: String,
 }
 
 /// Ce que la webview de l'overlay a le droit de connaître : les réglages
@@ -297,13 +364,25 @@ fn save_config(
     ensure_settings(&window)?;
 
     let mut c = new_config;
-    c.server = c.server.trim().to_string();
-    if !(c.server.starts_with("ws://") || c.server.starts_with("wss://")) {
-        return Err("L'adresse du serveur doit commencer par ws:// ou wss://".into());
+    if !CONNECTION_MODES.contains(&c.connection_mode.as_str()) {
+        c.connection_mode = default_connection_mode();
     }
+    c.server = c.server.trim().to_string();
     c.secret = c.secret.trim().to_string();
-    if c.secret.is_empty() {
-        return Err("Le mot de passe partagé est vide.".into());
+    c.hosted_server = c.hosted_server.trim().trim_end_matches('/').to_string();
+    c.hosted_token = c.hosted_token.trim().to_string();
+    c.hosted_guild_id = c.hosted_guild_id.trim().to_string();
+    if c.connection_mode == "self-host" {
+        if !(c.server.starts_with("ws://") || c.server.starts_with("wss://")) {
+            return Err("L'adresse du serveur doit commencer par ws:// ou wss://".into());
+        }
+        if c.secret.is_empty() {
+            return Err("Le mot de passe partagé est vide.".into());
+        }
+    } else if !(c.hosted_server.starts_with("https://") || c.hosted_server.starts_with("http://")) {
+        return Err("L'adresse du service hébergé doit commencer par https:// ou http://".into());
+    } else if c.hosted_token.is_empty() || c.hosted_guild_id.is_empty() {
+        return Err("Connecte Discord puis choisis un serveur avant d'enregistrer.".into());
     }
     c.display_seconds = c.display_seconds.clamp(1.0, 600.0);
     c.max_video_seconds = c.max_video_seconds.clamp(1.0, 3600.0);
@@ -323,8 +402,12 @@ fn save_config(
     write_atomic(path, &render_config(&c))
         .map_err(|e| format!("Écriture impossible ({}) : {e}", path.display()))?;
 
-    let needs_restart =
-        c.server != startup.initial_server || c.secret != startup.initial_secret;
+    let needs_restart = c.server != startup.initial_server
+        || c.secret != startup.initial_secret
+        || c.connection_mode != startup.initial_connection_mode
+        || c.hosted_server != startup.initial_hosted_server
+        || c.hosted_token != startup.initial_hosted_token
+        || c.hosted_guild_id != startup.initial_hosted_guild_id;
 
     // Applique immédiatement les réglages d'affichage à l'overlay.
     let _ = app.emit_to("main", "display-config", ui_state(&c, None, None));
@@ -471,9 +554,9 @@ async fn update_task(app: AppHandle, manual: bool) {
 
 /// Boucle de connexion au serveur, avec reconnexion et backoff exponentiel.
 async fn ws_task(app: AppHandle, config: Config) {
-    let token: String = utf8_percent_encode(&config.secret, NON_ALPHANUMERIC).to_string();
-    let separator = if config.server.contains('?') { '&' } else { '?' };
-    let url = format!("{}{}token={}", config.server, separator, token);
+    let Some(url) = config.websocket_url() else {
+        return;
+    };
 
     let mut backoff = Duration::from_secs(2);
     const MAX_BACKOFF: Duration = Duration::from_secs(60);
@@ -560,10 +643,22 @@ fn main() {
         config_path,
         initial_server: config.server.clone(),
         initial_secret: config.secret.clone(),
+        initial_connection_mode: config.connection_mode.clone(),
+        initial_hosted_server: config.hosted_server.clone(),
+        initial_hosted_token: config.hosted_token.clone(),
+        initial_hosted_guild_id: config.hosted_guild_id.clone(),
     };
     let config_for_task = config.clone();
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}));
+    }
+
+    builder
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -583,6 +678,8 @@ fn main() {
             show_test_media
         ])
         .setup(move |app| {
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            app.deep_link().register_all()?;
             let win = app
                 .get_webview_window("main")
                 .expect("fenêtre principale absente");
