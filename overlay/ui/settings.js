@@ -23,6 +23,7 @@ const iconVariantEls = Array.from(document.querySelectorAll('input[name="icon-va
 const connectionModeEls = Array.from(document.querySelectorAll('input[name="connection-mode"]'));
 const hostedGuildEl = $("hosted-guild");
 const hostedStatusEl = $("hosted-status");
+const refreshHostedGuildsEl = $("refresh-hosted-guilds");
 
 /** Service hébergé fixe — pas configurable par l'utilisateur. */
 const HOSTED_SERVER_URL = "https://livechat.zaaap.it";
@@ -79,7 +80,11 @@ function setHostedGuilds(guilds, selected = "") {
 
 async function loadHostedGuilds(selected = "") {
   const base = hostedBaseUrl();
-  if (!base || !hostedToken) return;
+  if (!base || !hostedToken) {
+    refreshHostedGuildsEl.disabled = true;
+    return;
+  }
+  refreshHostedGuildsEl.disabled = true;
   try {
     const response = await fetch(base + "/api/me/guilds", {
       headers: { Authorization: "Bearer " + hostedToken },
@@ -92,6 +97,8 @@ async function loadHostedGuilds(selected = "") {
     hostedToken = "";
     setHostedGuilds([]);
     setHostedStatus("Impossible de récupérer les serveurs : " + error.message, true);
+  } finally {
+    refreshHostedGuildsEl.disabled = !hostedToken;
   }
 }
 
@@ -225,6 +232,10 @@ async function save() {
 
 $("save").addEventListener("click", save);
 $("login-discord").addEventListener("click", startHostedLogin);
+refreshHostedGuildsEl.addEventListener("click", () => {
+  setHostedStatus("Actualisation des serveurs…");
+  loadHostedGuilds(hostedGuildEl.value);
+});
 $("restart-now").addEventListener("click", () => invoke("restart_app").catch(() => {}));
 $("test").addEventListener("click", () => invoke("show_test_media").catch(() => {}));
 $("check-updates").addEventListener("click", () => {
