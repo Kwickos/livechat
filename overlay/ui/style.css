@@ -1,3 +1,6 @@
+/* LiveChat — overlay en jeu.
+   Même langage que la fenêtre Paramètres : quasi-noir, hairline, monochrome. */
+
 * {
   margin: 0;
   padding: 0;
@@ -11,7 +14,8 @@ body {
   background: transparent;
   overflow: hidden;
   user-select: none;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 #stage {
@@ -34,7 +38,7 @@ body {
   align-items: center;
   gap: 10px;
   opacity: 0;
-  transform: scale(0.92);
+  transform: scale(0.96);
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
@@ -48,7 +52,9 @@ body {
   max-width: var(--max-w, 45vw);
   max-height: var(--max-h, 45vh);
   border-radius: 12px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+  outline: 1px solid rgba(255, 255, 255, 0.09);
+  outline-offset: -1px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
 }
 
 #video {
@@ -62,8 +68,9 @@ body {
   gap: 16px;
   padding: 30px 46px;
   border-radius: 16px;
-  background: rgba(20, 22, 28, 0.82);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(11, 11, 14, 0.88);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
 }
 
 #audio-card .eq {
@@ -75,10 +82,10 @@ body {
 
 #audio-card .eq span {
   display: block;
-  width: 9px;
+  width: 8px;
   height: 100%;
   border-radius: 4px;
-  background: linear-gradient(#ffd166, #5865f2);
+  background: linear-gradient(#f2f2f4, #55565f);
   transform-origin: bottom;
   animation: eq 0.9s ease-in-out infinite;
 }
@@ -94,8 +101,8 @@ body {
 }
 
 #audio-name {
-  color: #fff;
-  font-size: 15px;
+  color: #f2f2f4;
+  font-size: 14px;
   max-width: 38vw;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -107,21 +114,22 @@ body {
   gap: 8px;
   align-items: baseline;
   max-width: var(--max-w, 45vw);
-  background: rgba(0, 0, 0, 0.65);
-  color: #fff;
+  background: rgba(9, 9, 11, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #f2f2f4;
   padding: 5px 14px;
   border-radius: 999px;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 #sender {
   font-weight: 600;
-  color: #ffd166;
+  color: #ffffff;
   white-space: nowrap;
 }
 
 #caption {
-  opacity: 0.9;
+  color: #a7a8b1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -132,11 +140,12 @@ body {
   top: 14px;
   right: 14px;
   max-width: 40vw;
-  background: rgba(0, 0, 0, 0.75);
-  color: #fff;
-  padding: 7px 14px;
-  border-radius: 8px;
-  font-size: 13px;
+  background: rgba(9, 9, 11, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #e8e8ec;
+  padding: 6px 13px;
+  border-radius: 999px;
+  font-size: 12.5px;
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;

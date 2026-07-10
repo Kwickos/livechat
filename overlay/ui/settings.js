@@ -31,11 +31,58 @@ const HOSTED_SERVER_URL = "https://livechat.zaaap.it";
 let statusTimer = null;
 let hostedToken = "";
 
+// Trace la portion « remplie » du curseur (variable CSS --fill).
+function refreshFill(el) {
+  const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+  el.style.setProperty("--fill", pct + "%");
+}
+
 function refreshLabels() {
   $("size-val").textContent = maxSizeEl.value + " %";
   $("imgsec-val").textContent = displaySecondsEl.value + " s";
   $("vidsec-val").textContent = maxVideoSecondsEl.value + " s";
   $("volume-val").textContent = volumeEl.value === "0" ? "muet" : volumeEl.value + " %";
+  [maxSizeEl, displaySecondsEl, maxVideoSecondsEl, volumeEl].forEach(refreshFill);
+  // Le fantôme de l'aperçu reflète la taille maximale choisie.
+  $("ghost").style.width = maxSizeEl.value + "%";
+}
+
+// Aperçu de position : le select natif reste la source de vérité (save/load),
+// les pastilles du mini-écran ne font que le piloter.
+const screenEl = $("screen");
+const posDots = Array.from(document.querySelectorAll(".pos-dot"));
+
+function syncPositionUI() {
+  const pos = positionEl.value || "center";
+  screenEl.dataset.pos = pos;
+  posDots.forEach((dot) => dot.setAttribute("aria-checked", String(dot.dataset.pos === pos)));
+}
+
+posDots.forEach((dot) =>
+  dot.addEventListener("click", () => {
+    positionEl.value = dot.dataset.pos;
+    syncPositionUI();
+  })
+);
+
+// Pastille d'état de connexion (alimentée par les événements « status »).
+const connPill = $("conn-pill");
+const connText = $("conn-text");
+const CONN_STATES = {
+  connecting: ["Connexion…", "wait"],
+  connected: ["Connecté", "ok"],
+  disconnected: ["Déconnecté", "err"],
+  error: ["Hors ligne", "err"],
+};
+
+function setConnPill(state, detail) {
+  const entry = CONN_STATES[state];
+  if (!entry) return;
+  connPill.hidden = false;
+  connPill.className = "status-pill " + entry[1];
+  connText.textContent = entry[0];
+  if (state === "error" && detail) connPill.title = detail;
+  else connPill.removeAttribute("title");
 }
 
 function showSaveStatus(text, isError) {
@@ -57,6 +104,7 @@ function getConnectionMode() {
 
 function setHostedStatus(text, isError = false) {
   hostedStatusEl.textContent = text;
+  hostedStatusEl.title = text; // le texte long est tronqué dans la ligne de compte
   hostedStatusEl.classList.toggle("error", isError);
 }
 
@@ -180,6 +228,7 @@ async function load() {
     volumeEl.value = 50;
     setIconVariant("color");
   }
+  syncPositionUI();
   try {
     $("version").textContent = "v" + (await invoke("get_app_version"));
   } catch (_) {
@@ -192,17 +241,18 @@ async function load() {
   }
   refreshLabels();
 
-  // Retour des vérifications de mise à jour (événements globaux).
+  // Retour des vérifications de mise à jour + état de connexion (événements globaux).
   await listen("status", (e) => {
     const s = e.payload || {};
     const map = {
-      "update-downloading": "⬇️ Téléchargement de la mise à jour " + (s.detail || "") + "…",
-      "update-installed": "✅ Installée — redémarrage…",
-      "update-none": "✔️ L'application est à jour.",
-      "update-busy": "⏳ Une vérification est déjà en cours…",
-      "update-error": "⚠️ " + (s.detail || "erreur"),
+      "update-downloading": "Téléchargement de la mise à jour " + (s.detail || "") + "…",
+      "update-installed": "Installée — redémarrage…",
+      "update-none": "L'application est à jour.",
+      "update-busy": "Une vérification est déjà en cours…",
+      "update-error": "Mise à jour impossible : " + (s.detail || "erreur"),
     };
     if (map[s.state]) updateStatusEl.textContent = map[s.state];
+    setConnPill(s.state, s.detail);
   });
 }
 

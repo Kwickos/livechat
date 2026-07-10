@@ -92,12 +92,13 @@ async function init() {
 
 // Aperçu navigateur : affiche un média factice en boucle.
 function demo() {
-  document.body.style.background = "#2b2d31";
+  document.body.style.background = "#131316";
   const svg =
     "<svg xmlns='http://www.w3.org/2000/svg' width='520' height='300'>" +
-    "<rect width='100%' height='100%' rx='24' fill='%235865F2'/>" +
-    "<text x='50%' y='42%' font-family='Segoe UI' font-size='44' font-weight='bold' fill='white' text-anchor='middle'>LiveChat</text>" +
-    "<text x='50%' y='66%' font-family='Segoe UI' font-size='26' fill='white' text-anchor='middle'>Mode aperçu</text></svg>";
+    "<rect width='100%' height='100%' rx='24' fill='%230b0b0e'/>" +
+    "<rect x='0.5' y='0.5' width='519' height='299' rx='23.5' fill='none' stroke='rgba(255,255,255,0.14)'/>" +
+    "<text x='50%' y='44%' font-family='Segoe UI' font-size='44' font-weight='600' fill='%23f2f2f4' text-anchor='middle'>LiveChat</text>" +
+    "<text x='50%' y='66%' font-family='Segoe UI' font-size='24' fill='%239c9da6' text-anchor='middle'>Mode aperçu</text></svg>";
   const item = {
     type: "media",
     kind: "image",
