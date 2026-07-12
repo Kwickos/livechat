@@ -15,8 +15,7 @@ const box = document.getElementById("media-box");
 const img = document.getElementById("img");
 const video = document.getElementById("video");
 const audio = document.getElementById("audio");
-const audioCard = document.getElementById("audio-card");
-const audioName = document.getElementById("audio-name");
+const metaEl = document.getElementById("meta");
 const senderEl = document.getElementById("sender");
 const captionEl = document.getElementById("caption");
 const statusEl = document.getElementById("status");
@@ -172,11 +171,16 @@ function pump() {
 function show(item) {
   clearTimeout(hideTimer); // aucun minuteur orphelin d'un média précédent
   fallbackMuted = false;
+  const isAudio = item.kind === "audio";
   senderEl.textContent = item.sender || "";
   const caption = (item.caption || "").trim();
-  const showCaption = caption && !caption.startsWith("http");
+  // Pour un son : pas de légende, seule la pastille avec l'expéditeur reste.
+  const showCaption = !isAudio && caption && !caption.startsWith("http");
   captionEl.textContent = showCaption ? caption : "";
   captionEl.classList.toggle("hidden", !showCaption);
+  // Son anonyme : on masque toute la pastille plutôt que d'afficher une boîte
+  // vide — l'état est remis à zéro ici pour ne pas hériter du média précédent.
+  metaEl.classList.toggle("hidden", isAudio && !item.sender);
 
   // garde-fou : si le média ne charge jamais (URL expirée…), on passe au suivant
   clearTimeout(guardTimer);
@@ -184,7 +188,6 @@ function show(item) {
 
   img.classList.add("hidden");
   video.classList.add("hidden");
-  audioCard.classList.add("hidden");
   setAlphaClass(img, false);
   setAlphaClass(video, false);
 
@@ -217,9 +220,9 @@ function show(item) {
       });
     };
     loadInto(video, item.url);
-  } else if (item.kind === "audio") {
-    audioCard.classList.remove("hidden");
-    audioName.textContent = item.filename || "🔊 Son";
+  } else if (isAudio) {
+    // Volonté explicite : un son ne montre aucune animation, au plus la
+    // pastille avec l'expéditeur (déjà réglée plus haut).
     audio.volume = Math.min(Math.max(config.volume, 0), 1);
     audio.muted = config.volume <= 0;
     audio.onerror = finish;
@@ -228,7 +231,7 @@ function show(item) {
       reveal();
       armHide(config.max_video_seconds);
       audio.play().catch(() => {
-        // en cas de blocage autoplay, on laisse au moins la carte visible
+        // en cas de blocage autoplay, on retente en muet
         fallbackMuted = true;
         audio.muted = true;
         audio.play().catch(finish);
